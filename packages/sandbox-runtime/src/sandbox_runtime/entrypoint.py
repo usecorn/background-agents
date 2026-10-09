@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import os
 import signal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .agent_bridge_process import AgentBridgeProcess
@@ -32,6 +33,7 @@ from .opencode_server import OpenCodeServer, resolve_opencode_global_config_dir
 from .repository_boot import RepositoryBoot
 from .repository_hooks import RepositoryHooks
 from .repository_sync import RepositorySynchronizer
+from .review_launch import prepare_review_launch
 from .runtime_config import RuntimeConfig
 from .supervisor import SandboxSupervisor
 from .tunnel_environment import TunnelEnvironment
@@ -39,7 +41,6 @@ from .web_terminal import WebTerminal
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from .repo_config import RepoEntry
     from .review_profile import ReviewProfile
@@ -189,6 +190,7 @@ def install_signal_handlers(supervisor: SandboxSupervisor) -> None:
 
 async def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Open-Inspect sandbox supervisor")
+    parser.add_argument("--managed-review-context", type=Path)
     parser.add_argument(
         MODAL_IMAGE_BUILD_START_ARGUMENT,
         dest="await_modal_image_build_token",
@@ -200,6 +202,21 @@ async def main(argv: list[str] | None = None) -> int:
         action="store_true",
     )
     args = parser.parse_args(argv)
+
+    if args.managed_review_context is not None:
+        if (
+            args.await_image_build_context
+            or args.await_modal_image_build_token
+            or deferred_start_requested(os.environ)
+        ):
+            parser.error("Managed reviews cannot use image-build launch protocols")
+        apply_image_environment()
+        profile = prepare_review_launch(
+            args.managed_review_context, RuntimeConfig.from_env(os.environ)
+        )
+        supervisor = build_supervisor(asyncio.Event(), review_profile=profile)
+        install_signal_handlers(supervisor)
+        return 0 if await supervisor.run() else 1
 
     # Both image-build launch protocols decide the process environment before
     # anything reads it, so they branch ahead of build_supervisor(). The
