@@ -15,6 +15,7 @@ from .runtime_config import BootMode
 if TYPE_CHECKING:
     from .repo_config import RepoEntry
 
+CREDENTIAL_HELPER_INSTALL_PATH = Path("/usr/local/bin/oi-git-credentials")
 GH_WRAPPER_REAL_PATH = "/usr/bin/gh"
 GH_WRAPPER_INSTALL_PATH = Path("/usr/local/bin/gh")
 GH_WRAPPER_BODY = Path(__file__).with_name("gh-wrapper.sh").read_text()
@@ -142,7 +143,7 @@ class RepositorySynchronizer:
         return True
 
     async def ensure_credentials_configured(self) -> None:
-        shim_path = Path("/usr/local/bin/oi-git-credentials")
+        shim_path = CREDENTIAL_HELPER_INSTALL_PATH
         shim_body = (
             '#!/bin/sh\nexec python3 -m sandbox_runtime.credentials.git_credential_helper "$@"\n'
         )

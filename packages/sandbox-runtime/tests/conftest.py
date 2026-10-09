@@ -57,6 +57,12 @@ def isolate_runtime_file_paths(tmp_path, monkeypatch):
     care about a specific path still patch it themselves; this fixture is the
     backstop that keeps every other test off the real files.
     """
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    monkeypatch.setattr("sandbox_runtime.repository_sync.GH_WRAPPER_INSTALL_PATH", tmp_path / "gh")
+    monkeypatch.setattr(
+        "sandbox_runtime.repository_sync.CREDENTIAL_HELPER_INSTALL_PATH",
+        tmp_path / "oi-git-credentials",
+    )
     manifest_path = str(tmp_path / "oi-repo-manifest.json")
     boot_events_path = str(tmp_path / "oi-boot-events.jsonl")
     tunnel_env_path = str(tmp_path / ".tunnels.env")
