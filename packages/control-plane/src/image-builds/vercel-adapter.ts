@@ -1,7 +1,4 @@
-import {
-  VERCEL_MAX_SANDBOX_TIMEOUT_MS,
-  type VercelSandboxProvider,
-} from "../sandbox/providers/vercel/provider";
+import type { VercelSandboxProvider } from "../sandbox/providers/vercel/provider";
 import type { ImageBuildProviderImageRef } from "./model";
 import type {
   CompletedImageBuildInput,
@@ -30,7 +27,7 @@ export class VercelImageBuildAdapter implements ImageBuildAdapter {
   async startBuild(plan: ImageBuildPlan, callbacks: ImageBuildStartCallbacks): Promise<void> {
     const executionTimeoutMs = Math.min(
       plan.buildTimeoutMs,
-      VERCEL_MAX_SANDBOX_TIMEOUT_MS - IMAGE_BUILD_FINALIZATION_GRACE_MS
+      this.provider.maxSandboxTimeoutMs - IMAGE_BUILD_FINALIZATION_GRACE_MS
     );
     await this.provider.triggerImageBuild({
       scopeKind: plan.scope.kind,

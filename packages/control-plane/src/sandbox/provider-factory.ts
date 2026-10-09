@@ -17,7 +17,11 @@ import {
   type OpenComputerSandboxProvider,
 } from "./providers/opencomputer-provider";
 import { createVercelSandboxClient } from "./providers/vercel/client";
-import { createVercelProvider, type VercelSandboxProvider } from "./providers/vercel/provider";
+import {
+  createVercelProvider,
+  DEFAULT_VERCEL_MAX_SANDBOX_TIMEOUT_MS,
+  type VercelSandboxProvider,
+} from "./providers/vercel/provider";
 import { resolveScmProviderFromEnv } from "../source-control";
 import type { Env } from "../types";
 
@@ -58,6 +62,11 @@ function createVercelProviderFromEnv(env: Env): VercelSandboxProvider {
     baseSnapshotId: env.VERCEL_BASE_SNAPSHOT_ID,
     baseSnapshotName: env.VERCEL_BASE_SNAPSHOT_NAME,
     runtime: env.VERCEL_RUNTIME,
+    maxSandboxTimeoutMs: parseNumericEnv(
+      "VERCEL_MAX_SANDBOX_TIMEOUT_MS",
+      env.VERCEL_MAX_SANDBOX_TIMEOUT_MS,
+      DEFAULT_VERCEL_MAX_SANDBOX_TIMEOUT_MS
+    ),
     snapshotExpirationMs: parseNumericEnv(
       "VERCEL_SNAPSHOT_EXPIRATION_MS",
       env.VERCEL_SNAPSHOT_EXPIRATION_MS,

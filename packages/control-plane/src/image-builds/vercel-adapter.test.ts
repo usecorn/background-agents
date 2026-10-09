@@ -4,8 +4,9 @@ import { VercelImageBuildAdapter } from "./vercel-adapter";
 import type { ImageBuildPlan } from "./types";
 import { immediateFinalizationInput } from "./test-helpers";
 
-function createProvider(): VercelSandboxProvider {
+function createProvider(maxSandboxTimeoutMs = 45 * 60_000): VercelSandboxProvider {
   return {
+    maxSandboxTimeoutMs,
     triggerImageBuild: vi.fn(async () => undefined),
     takeSnapshot: vi.fn(async () => ({ success: true, imageId: "vercel-snapshot-1" })),
     stopSandbox: vi.fn(async () => ({ success: true })),
@@ -36,6 +37,18 @@ function createPlan(buildTimeoutMs = 1_800_001): ImageBuildPlan {
 }
 
 describe("VercelImageBuildAdapter", () => {
+  it("uses the configured paid-plan ceiling while reserving finalization time", async () => {
+    const provider = createProvider(3 * 60 * 60_000);
+    await new VercelImageBuildAdapter(provider).startBuild(createPlan(60 * 60_000), {
+      bindProviderSession: vi.fn(),
+    });
+    expect(provider.triggerImageBuild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        buildExecutionTimeoutSeconds: 60 * 60,
+        providerSessionTimeoutSeconds: 70 * 60,
+      })
+    );
+  });
   it("starts builds through the Vercel provider capability", async () => {
     const provider = createProvider();
     const adapter = new VercelImageBuildAdapter(provider);

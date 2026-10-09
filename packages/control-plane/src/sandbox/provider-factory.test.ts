@@ -8,6 +8,31 @@ function createEnv(overrides: Partial<Env>): Env {
 }
 
 describe("createSandboxProviderFromEnv", () => {
+  it("loads the deployment Vercel lifetime ceiling", () => {
+    const provider = createSandboxProviderFromEnv(
+      createEnv({
+        VERCEL_TOKEN: "vercel-token",
+        VERCEL_PROJECT_ID: "project-id",
+        VERCEL_MAX_SANDBOX_TIMEOUT_MS: "10800000",
+      }),
+      "vercel"
+    );
+    expect(provider.maxSandboxTimeoutMs).toBe(10800000);
+  });
+
+  it.each(["3h", "0", "86400001", "2700000.5"])("rejects invalid Vercel lifetime %s", (value) => {
+    expect(() =>
+      createSandboxProviderFromEnv(
+        createEnv({
+          VERCEL_TOKEN: "vercel-token",
+          VERCEL_PROJECT_ID: "project-id",
+          VERCEL_MAX_SANDBOX_TIMEOUT_MS: value,
+        }),
+        "vercel"
+      )
+    ).toThrow("VERCEL_MAX_SANDBOX_TIMEOUT_MS");
+  });
+
   it("rejects malformed Vercel numeric configuration", () => {
     const env = createEnv({
       VERCEL_TOKEN: "vercel-token",

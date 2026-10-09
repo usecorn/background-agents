@@ -57,16 +57,17 @@ const TUNNEL_ENV_FILE_PATH = "/workspace/.tunnels.env";
 const TUNNEL_ENV_SANDBOX_ID_KEY = "TUNNEL_SANDBOX_ID";
 const EXPECTED_TUNNEL_PORTS_ENV_VAR = "EXPECTED_TUNNEL_PORTS";
 const DEFAULT_SNAPSHOT_EXPIRATION_MS = 0;
-// Exported for the stale-threshold ceiling assertion in image-builds/maintenance.test.ts.
-export const VERCEL_MAX_SANDBOX_TIMEOUT_MS = 45 * 60 * 1000;
+// Conservative default; deployments can opt into their provider plan entitlement.
+export const DEFAULT_VERCEL_MAX_SANDBOX_TIMEOUT_MS = 45 * 60 * 1000;
+const VERCEL_SUPPORTED_MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const VERCEL_MEMORY_MIB_PER_VCPU = 2048;
 const VERCEL_SUPPORTED_VCPUS: readonly VercelVcpus[] = [1, 2, 4, 8];
 const VERCEL_MAX_VCPUS = VERCEL_SUPPORTED_VCPUS[VERCEL_SUPPORTED_VCPUS.length - 1];
 const VERCEL_TUNNEL_ENV_WRITE_TIMEOUT_MS = 30_000;
 
-function resolveVercelTimeoutMs(timeoutSeconds?: number): number {
+function resolveVercelTimeoutMs(maxTimeoutMs: number, timeoutSeconds?: number): number {
   const requestedMs = (timeoutSeconds ?? DEFAULT_SANDBOX_TIMEOUT_SECONDS) * 1000;
-  return Math.min(requestedMs, VERCEL_MAX_SANDBOX_TIMEOUT_MS);
+  return Math.min(requestedMs, maxTimeoutMs);
 }
 
 export interface VercelProviderConfig {
@@ -75,6 +76,7 @@ export interface VercelProviderConfig {
   baseSnapshotName?: string;
   runtime?: string;
   snapshotExpirationMs?: number;
+  maxSandboxTimeoutMs?: number;
   /** Secret used for domain-separated sandbox access password derivation. */
   sandboxAccessPasswordSecret: string;
   apiBaseUrl?: string;
@@ -85,6 +87,7 @@ export interface VercelProviderConfig {
 export class VercelSandboxProvider implements SandboxProvider {
   readonly name = "vercel";
   private baseSnapshotIdPromise?: Promise<string>;
+  readonly maxSandboxTimeoutMs: number;
 
   readonly capabilities: SandboxProviderCapabilities = {
     supportsSandboxTimeout: supportsConfigurableSandboxTimeout(this.name),
@@ -98,11 +101,24 @@ export class VercelSandboxProvider implements SandboxProvider {
   constructor(
     private readonly client: VercelSandboxClient,
     private readonly providerConfig: VercelProviderConfig
-  ) {}
+  ) {
+    const maxTimeoutMs =
+      providerConfig.maxSandboxTimeoutMs ?? DEFAULT_VERCEL_MAX_SANDBOX_TIMEOUT_MS;
+    if (
+      !Number.isInteger(maxTimeoutMs) ||
+      maxTimeoutMs < DEFAULT_VERCEL_MAX_SANDBOX_TIMEOUT_MS ||
+      maxTimeoutMs > VERCEL_SUPPORTED_MAX_TIMEOUT_MS
+    ) {
+      throw new Error(
+        "VERCEL_MAX_SANDBOX_TIMEOUT_MS must be an integer between 2700000 and 86400000"
+      );
+    }
+    this.maxSandboxTimeoutMs = maxTimeoutMs;
+  }
 
   async createSandbox(config: CreateSandboxConfig): Promise<CreateSandboxResult> {
     try {
-      const timeoutMs = resolveVercelTimeoutMs(config.timeoutSeconds);
+      const timeoutMs = resolveVercelTimeoutMs(this.maxSandboxTimeoutMs, config.timeoutSeconds);
       const portPlan = resolveSandboxPortPlan(
         {
           codeServer: config.codeServerEnabled === true,
@@ -187,7 +203,7 @@ export class VercelSandboxProvider implements SandboxProvider {
 
   async restoreFromSnapshot(config: RestoreConfig): Promise<RestoreResult> {
     try {
-      const timeoutMs = resolveVercelTimeoutMs(config.timeoutSeconds);
+      const timeoutMs = resolveVercelTimeoutMs(this.maxSandboxTimeoutMs, config.timeoutSeconds);
       const portPlan = resolveSandboxPortPlan(
         {
           codeServer: config.codeServerEnabled === true,
@@ -319,7 +335,10 @@ export class VercelSandboxProvider implements SandboxProvider {
         {
           name: sandboxName,
           runtime: this.providerConfig.runtime || DEFAULT_VERCEL_RUNTIME,
-          timeoutMs: resolveVercelTimeoutMs(config.providerSessionTimeoutSeconds),
+          timeoutMs: resolveVercelTimeoutMs(
+            this.maxSandboxTimeoutMs,
+            config.providerSessionTimeoutSeconds
+          ),
           env,
           tags: identity.labels,
           sourceSnapshotId: baseSnapshotId,

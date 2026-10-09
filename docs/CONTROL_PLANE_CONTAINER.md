@@ -280,3 +280,15 @@ cannot be replayed over the restored or new file.
 The build runs from the repository root so that `packages/shared` and the D1 migrations are in the
 context. The runtime image contains the bundled host, the migrations and the `litestream` binary; no
 `node_modules`.
+
+## Vercel sandbox lifetime
+
+`VERCEL_MAX_SANDBOX_TIMEOUT_MS` sets the deployment's Vercel lifetime ceiling.
+The default remains 2700000 ms. For the Corn pilot, use 10800000 ms (three hours)
+only with a Vercel project whose plan permits it. The setting accepts integer
+milliseconds from 2700000 through 86400000; it does not upgrade provider entitlement.
+Requested session lifetimes are capped at this ceiling on both creation and restore.
+Image builds reserve their finalization grace period inside the same ceiling.
+
+A provider accepting the timeout is not proof that an agent runs for that long.
+The pilot still requires a run beyond 60 minutes and workspace/conversation restore.

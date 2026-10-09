@@ -83,6 +83,7 @@ export interface EnvConfig {
   VERCEL_TEAM_ID?: string; // Optional Vercel team ID used for Sandbox API scope
   VERCEL_BASE_SNAPSHOT_ID?: string; // Optional prebuilt base snapshot with sandbox runtime
   VERCEL_BASE_SNAPSHOT_NAME?: string; // Optional managed base snapshot sandbox name
+  VERCEL_MAX_SANDBOX_TIMEOUT_MS?: string; // Deployment plan ceiling for sandbox lifetime
   VERCEL_RUNTIME?: string; // Vercel sandbox runtime (default: node24)
   VERCEL_SANDBOX_API_BASE_URL?: string; // Override for tests or non-default Vercel API base URL
   VERCEL_SNAPSHOT_EXPIRATION_MS?: string; // Snapshot expiration in ms; 0 means no expiration
