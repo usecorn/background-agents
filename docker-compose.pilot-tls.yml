@@ -1,0 +1,38 @@
+# Optional overlay, after reviewing the route smoke and preparing host storage.
+# Default bind stays private; public ingress also needs the DevOps firewall change.
+services:
+  tls-proxy:
+    image: ${TLS_PROXY_IMAGE:?Set the verified pilot Caddy image digest}
+    user: "1002:1002"
+    environment:
+      PILOT_HOST: ${PILOT_HOST:-openinspect-staging.usecorn.com}
+    ports:
+      - "${PILOT_HTTPS_BIND:-127.0.0.1}:443:8443"
+    volumes:
+      - type: bind
+        source: /etc/openinspect-pilot/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/openinspect-pilot/pilot-routes.caddy
+        target: /etc/caddy/pilot-routes.caddy
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/openinspect-staging/tls
+        target: /data
+        bind:
+          create_host_path: false
+    depends_on:
+      control-plane:
+        condition: service_healthy
+      review-controller:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=16m", "/config:uid=1002,gid=1002,mode=0700,size=16m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

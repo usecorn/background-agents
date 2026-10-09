@@ -1,0 +1,14 @@
+{
+	admin off
+	https_port 8443
+	auto_https disable_redirects
+}
+
+{$PILOT_HOST:openinspect-staging.usecorn.com} {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	import /etc/caddy/pilot-routes.caddy
+}

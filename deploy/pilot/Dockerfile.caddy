@@ -1,0 +1,5 @@
+FROM caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+# The upstream binary carries cap_net_bind_service. This pilot listens on 8443,
+# so remove that file capability to support cap_drop=ALL and no-new-privileges.
+RUN setcap -r /usr/bin/caddy
+USER 1002:1002

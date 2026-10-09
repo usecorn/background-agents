@@ -1,0 +1,37 @@
+# Header matching selects a backend; it does not authenticate the caller.
+# The backend still verifies sig1, GitHub OIDC, or the session bridge/WS token.
+# Do not enable access logs: WebSocket query strings can carry credentials.
+route {
+	@private path /managed-reviews /managed-reviews/* /healthz
+	respond @private 404
+
+	@review_start {
+		method POST
+		path /reviews
+	}
+	reverse_proxy @review_start {$REVIEW_UPSTREAM:review-controller:8788}
+	@review_status {
+		method GET
+		path_regexp review ^/reviews/[a-f0-9-]{36}$
+	}
+	reverse_proxy @review_status {$REVIEW_UPSTREAM:review-controller:8788}
+
+	@session_ws {
+		method GET
+		path_regexp socket ^/sessions/[A-Za-z0-9_-]+/ws$
+		header Upgrade websocket
+	}
+	reverse_proxy @session_ws {$CONTROL_PLANE_UPSTREAM:control-plane:8787}
+	@sandbox_error {
+		method POST
+		path_regexp error ^/sessions/[A-Za-z0-9_-]+/sandbox-error$
+	}
+	reverse_proxy @sandbox_error {$CONTROL_PLANE_UPSTREAM:control-plane:8787}
+
+	@web {
+		header X-OpenInspect-Service web
+		header X-OpenInspect-Service-Signature sig1.*
+	}
+	reverse_proxy @web {$CONTROL_PLANE_UPSTREAM:control-plane:8787}
+	respond 404
+}
