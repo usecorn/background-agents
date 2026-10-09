@@ -5,3 +5,8 @@
 !package-lock.json
 # Don't ignore this directory
 !packages
+# The web TypeScript check includes vitest.config.ts and its shared coverage import.
+!scripts
+scripts/*
+!scripts/coverage-policy.ts
+!scripts/coverage-baseline.json
