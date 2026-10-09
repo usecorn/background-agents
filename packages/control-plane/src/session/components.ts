@@ -1,3 +1,4 @@
+import { ManagedReviewStore } from "./managed-review";
 /**
  * Composition root for one session runtime.
  *
@@ -776,7 +777,9 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
       backgroundTasks.submit(() => lifecycleManager.warmSandbox(), {
         name: "sandbox.warm",
       }),
-    generateId
+    generateId,
+    new ManagedReviewStore(sql),
+    messageRepository
   );
   const sessionLifecycleHandler = new SessionLifecycleHandler(
     sessionCoreRepository,

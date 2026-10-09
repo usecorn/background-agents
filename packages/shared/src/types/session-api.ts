@@ -382,3 +382,11 @@ export interface ChildSessionDetail {
   finalResponse?: ChildSessionFinalResponse | null;
   trajectory?: ChildSessionTrajectory;
 }
+
+/** Internal trusted-controller input; deliberately absent from ordinary create requests. */
+export const managedReviewInitSchema = z.strictObject({
+  runId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  messageId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  content: promptContentSchema.refine((value) => value.trim().length > 0),
+});
+export type ManagedReviewInit = z.infer<typeof managedReviewInitSchema>;

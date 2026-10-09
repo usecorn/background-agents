@@ -1,3 +1,6 @@
+import { managedReviewInitSchema } from "@open-inspect/shared/types/session-api";
+import type { ManagedReviewStore } from "../../managed-review";
+import type { MessageRepository } from "../../message-repository";
 import { z } from "zod";
 import type { Logger } from "../../../logger";
 import type { RepositoryRef } from "@open-inspect/shared/types/repositories";
@@ -34,6 +37,7 @@ const spawnSourceSchema = z.enum([
  */
 const initRequestSchema = z.object({
   sessionName: z.string(),
+  managedReview: managedReviewInitSchema.optional(),
   repoOwner: z.string().nullable(),
   repoName: z.string().nullable(),
   repoId: z.number().nullable().optional(),
@@ -89,6 +93,8 @@ export class SessionInitHandler {
     private readonly durableObjectId: string,
     private readonly scheduleWarmSandbox: () => void,
     private readonly generateId: (bytes?: number) => string,
+    private readonly managedReviewStore: ManagedReviewStore,
+    private readonly messageRepository: MessageRepository,
     private readonly now: () => number = Date.now
   ) {}
 
@@ -128,8 +134,33 @@ export class SessionInitHandler {
     // A retried init must not rebuild sandbox/participant rows or reset live
     // budget state. If the first attempt committed but never scheduled the
     // spawn, the first prompt spawns through processMessageQueue.
-    if (this.sessionCoreRepository.getSession()) {
+    const existing = this.sessionCoreRepository.getSession();
+    if (existing) {
+      if (body.managedReview) {
+        const review = body.managedReview;
+        const message = this.messageRepository.getMessageById(review.messageId);
+        if (
+          !this.managedReviewStore.matches(review.runId, review.messageId) ||
+          message?.content !== review.content ||
+          existing.model !== body.model ||
+          existing.harness !== body.harness
+        ) {
+          return Response.json(
+            { error: "Managed review initialization conflict" },
+            { status: 409 }
+          );
+        }
+      }
       return Response.json({ sessionId, status: "created" });
+    }
+    if (
+      body.managedReview &&
+      (body.harness !== "opencode" || !body.model || !isValidModel(body.model))
+    ) {
+      return Response.json(
+        { error: "Managed review requires a pinned valid model and OpenCode" },
+        { status: 400 }
+      );
     }
 
     const model = getValidModelOrDefault(body.model);
@@ -237,6 +268,22 @@ export class SessionInitHandler {
         role: "owner",
         joinedAt: now,
       });
+      if (body.managedReview) {
+        const review = body.managedReview;
+        if (!this.managedReviewStore.bind(review.runId, review.messageId)) {
+          throw new Error("Managed review initialization conflict");
+        }
+        this.messageRepository.createMessage({
+          id: review.messageId,
+          authorId: participantId,
+          content: review.content,
+          source: "agent",
+          model,
+          reasoningEffort,
+          status: "pending",
+          createdAt: now,
+        });
+      }
     });
 
     log.info("Triggering sandbox spawn for new session");

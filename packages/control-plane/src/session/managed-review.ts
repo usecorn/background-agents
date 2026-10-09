@@ -36,7 +36,7 @@ export class ManagedReviewStore {
     return this.matches(runId, messageId);
   }
 
-  private matches(runId: string, messageId: string): boolean {
+  matches(runId: string, messageId: string): boolean {
     return (
       this.sql
         .exec("SELECT 1 FROM managed_review WHERE run_id=? AND message_id=?", runId, messageId)

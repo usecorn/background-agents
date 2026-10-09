@@ -1,3 +1,4 @@
+import type { ManagedReviewInit } from "@open-inspect/shared/types/session-api";
 import type { HarnessId } from "@open-inspect/shared/harnesses";
 import type { SessionMemorySelection } from "../memory/types";
 import type { Env } from "../types";
@@ -32,6 +33,7 @@ function hasBranchContext(value: string | null | undefined): boolean {
  */
 export interface SessionInitInput {
   sessionId: string;
+  managedReview?: ManagedReviewInit;
 
   // Repository
   repoOwner: string | null;
@@ -221,6 +223,7 @@ export async function initializeSession(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionName: input.sessionId,
+          managedReview: input.managedReview,
           repoOwner: input.repoOwner,
           repoName: input.repoName,
           repoId: input.repoId,
