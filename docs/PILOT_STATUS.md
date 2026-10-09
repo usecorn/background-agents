@@ -1,17 +1,18 @@
 # Corn OpenInspect pilot: application handoff
 
-This branch is an implementation checkpoint for review, not a deployable malicious-code gate.
-The controller accepts review requests and manages GitHub checks, but its execution loop is not
-connected to OpenInspect/Vercel. Do not enable a required check against this implementation yet.
+This branch is an implementation checkpoint for review, not a deployable malicious-code gate. The
+controller accepts review requests, retrieves/seals existing OpenInspect results, and manages GitHub
+checks, but managed session creation and Vercel execution are not connected yet. Do not enable a
+required check against this implementation yet.
 
 ## Source and infrastructure
 
-Application fork: https://github.com/usecorn/background-agents
-Branch: `feat/openinspect-review-pilot`. Terraform remains in
-https://github.com/usecorn/devops/pull/141. Use that PR's current staging receipt and security
-handoff for machine names, access, disk locations and provisioning authority. Do not copy admin
-credentials to the development workstation. The old implementation evidence report is historical;
-its initial infrastructure and remote descriptions are superseded by this handoff and DevOps.
+Application fork: https://github.com/usecorn/background-agents Branch:
+`feat/openinspect-review-pilot`. Terraform remains in https://github.com/usecorn/devops/pull/141.
+Use that PR's current staging receipt and security handoff for machine names, access, disk locations
+and provisioning authority. Do not copy admin credentials to the development workstation. The old
+implementation evidence report is historical; its initial infrastructure and remote descriptions are
+superseded by this handoff and DevOps.
 
 ## Components to inspect
 
@@ -30,13 +31,18 @@ its initial infrastructure and remote descriptions are superseded by this handof
 
 ## Verification performed locally
 
-The controller suite passed 102 tests, including real SQLite and signed synthetic OIDC. The source
-bundle was extracted and consumed by the actual Python launch loader with temporary paths. Python
-runtime tests cover staging, managed boot, confinement and refusal to replace a missing conversation.
-Real OpenCode 1.18.29 tests with a synthetic provider proved bounded tools, blocked shell/plugin
-traps, saved messages after process restart, and a follow-up in the same conversation.
-These are not real GitHub checks, deployed image proof, Vercel conversation restore, or a real-model
-accuracy evaluation. Prior Vercel probes proved individual lifecycle/isolation primitives only.
+The controller tests cover real SQLite, signed synthetic OIDC, authenticated result retrieval,
+exact-digest sealing, restart retries, and late completion races. The source bundle was extracted
+and consumed by the actual Python launch loader with temporary paths. Python runtime tests cover
+staging, managed boot, confinement and refusal to replace a missing conversation. Real OpenCode
+1.18.29 tests with a synthetic provider proved bounded tools, blocked shell/plugin traps, saved
+messages after process restart, and a follow-up in the same conversation. These are not real GitHub
+checks, deployed image proof, Vercel conversation restore, or a real-model accuracy evaluation.
+Prior Vercel probes proved individual lifecycle/isolation primitives only.
+
+The controller now requires `REVIEW_CONTROL_PLANE_ORIGIN` and a private `REVIEW_SERVICE_SECRET_FILE`
+containing the controller's own sig1 secret. See its README. The result reconciler reads existing
+bound executions; it does not start them.
 
 To run the bundle cross-language check after installing the sandbox runtime Python environment:
 
@@ -48,9 +54,9 @@ Without that variable the cross-language case is explicitly skipped.
 
 ## Outstanding before application acceptance
 
-1. Wire managed session creation and controller execution to source acquisition, policy,
-   Vercel create/restore, terminal retrieval and sealing. The source/policy and terminal API
-   building blocks exist, but the scheduler does not yet execute complete reviews.
+1. Wire managed session creation and controller execution to source acquisition, policy, Vercel
+   create/restore. Terminal retrieval, coverage validation, sealing and publication are wired into
+   the controller scheduler, but it does not yet launch complete reviews.
 2. Resolve provider credential custody: current OpenCode profile receives a provider key while its
    confined source tools cannot access it. The DevOps handoff's stricter controller-only provider
    custody requires a provider broker before acceptance under that boundary.
@@ -60,12 +66,13 @@ Without that variable the cross-language case is explicitly skipped.
    check enforcement. Inspect inherited access/workflows before enabling CI. No production gate.
 6. Package pinned images, deploy behind private access first, verify restart/rollback and API auth,
    then enable the agreed TLS endpoint. Do not deploy candidate PR code on the controller host.
-7. Prove long-running and seven-day recovery behavior, two full autonomous E2E runs, spending alerts,
-   and the malicious/benign evaluation corpus. No accuracy/cost recommendation is ready yet.
+7. Prove long-running and seven-day recovery behavior, two full autonomous E2E runs, spending
+   alerts, and the malicious/benign evaluation corpus. No accuracy/cost recommendation is ready yet.
 
-OpenCode's loopback API must remain trusted-only. A probe against 1.18.29 found that a caller-selected
-repository directory can load a hostile plugin despite config flags; the managed launch uses trusted
-cwd and bridge requests without caller-selected directory headers. Do not add an unrestricted proxy.
+OpenCode's loopback API must remain trusted-only. A probe against 1.18.29 found that a
+caller-selected repository directory can load a hostile plugin despite config flags; the managed
+launch uses trusted cwd and bridge requests without caller-selected directory headers. Do not add an
+unrestricted proxy.
 
 ## Managed terminal API
 
@@ -74,9 +81,9 @@ The `review-controller` service principal alone can call:
 - `GET /managed-reviews/:sessionId/result?runId=...&messageId=...`
 - `POST /managed-reviews/:sessionId/seal` with JSON `{runId, messageId, responseDigest}`.
 
-Use the existing sig1 service signature with the controller's separate shared secret.
-The result is pending, incomplete, or completed. A completed candidate includes the
-attributed assistant response and its SHA-256 text digest; the controller must still
-validate JSON, coverage and current revisions. Seal supplies the observed digest,
-not a verdict. Failed terminal execution can be sealed with a null digest for later
-investigation, but cannot become passing evidence. Active/missing execution stays locked.
+Use the existing sig1 service signature with the controller's separate shared secret. The result is
+pending, incomplete, or completed. A completed candidate includes the attributed assistant response
+and its SHA-256 text digest; the controller must still validate JSON, coverage and current
+revisions. Seal supplies the observed digest, not a verdict. Failed terminal execution can be sealed
+with a null digest for later investigation, but cannot become passing evidence. Active/missing
+execution stays locked.

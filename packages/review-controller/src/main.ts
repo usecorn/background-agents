@@ -6,6 +6,8 @@ import { GitHubReviewClient } from "./github-client";
 import { createGitHubOidcVerifier } from "./github-oidc";
 import { createReviewHttpHandler } from "./http-handler";
 import { PublicationReconciler } from "./publication-reconciler";
+import { OpenInspectReviewClient } from "./openinspect-client";
+import { ResultReconciler } from "./result-reconciler";
 import { REVIEW_POLICY_DIGEST, REVIEW_MODEL_DIGEST } from "./review-policy";
 import { ReviewRunStore } from "./run-store";
 import { startReviewServer } from "./server";
@@ -27,6 +29,8 @@ async function main() {
       REVIEW_INSTALLATION_ID: numericId,
       REVIEW_APP_KEY_FILE: path,
       REVIEW_DATABASE_PATH: path,
+      REVIEW_CONTROL_PLANE_ORIGIN: z.url(),
+      REVIEW_SERVICE_SECRET_FILE: path,
       REVIEW_PORT: z.coerce.number().int().min(1).max(65535).default(8788),
       REVIEW_HOSTNAME: z.enum(["127.0.0.1", "0.0.0.0"]).default("127.0.0.1"),
       REVIEW_TIMEOUT_MS: z.coerce.number().int().min(1000).max(10800000).default(10800000),
@@ -56,8 +60,17 @@ async function main() {
     privateKey: readFileSync(env.REVIEW_APP_KEY_FILE, "utf8"),
   });
   const github = new GitHubReviewClient(policy.repository, token);
+  const serviceSecretStat = statSync(env.REVIEW_SERVICE_SECRET_FILE);
+  if (!serviceSecretStat.isFile() || (serviceSecretStat.mode & 0o077) !== 0) {
+    throw new Error("Private service secret permissions");
+  }
+  const openinspect = new OpenInspectReviewClient(
+    env.REVIEW_CONTROL_PLANE_ORIGIN,
+    readFileSync(env.REVIEW_SERVICE_SECRET_FILE, "utf8").trim()
+  );
   const store = new ReviewRunStore(env.REVIEW_DATABASE_PATH);
   const reconciler = new PublicationReconciler(store, github, policy, env.REVIEW_APP_ID);
+  const results = new ResultReconciler(store, openinspect, github);
   const handler = createReviewHttpHandler({
     store,
     github,
@@ -65,10 +78,17 @@ async function main() {
     verify: createGitHubOidcVerifier(policy),
     timeoutMs: env.REVIEW_TIMEOUT_MS,
   });
-  const server = await startReviewServer(handler, () => reconciler.tick(), {
-    hostname: env.REVIEW_HOSTNAME,
-    port: env.REVIEW_PORT,
-  });
+  const server = await startReviewServer(
+    handler,
+    async () => {
+      await results.tick();
+      await reconciler.tick();
+    },
+    {
+      hostname: env.REVIEW_HOSTNAME,
+      port: env.REVIEW_PORT,
+    }
+  );
   process.stdout.write("REVIEW_CONTROLLER_LISTENING\n");
   let closing = false;
   const shutdown = () => {

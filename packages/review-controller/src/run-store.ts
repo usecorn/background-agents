@@ -212,6 +212,13 @@ export class ReviewRunStore {
       .map((row) => decode(row as unknown as Row));
   }
 
+  running(): ReviewRun[] {
+    return this.db
+      .prepare(`SELECT * FROM review_runs WHERE state='running' AND ${CURRENT}`)
+      .all()
+      .map((row) => decode(row as unknown as Row));
+  }
+
   /** Commit before POST; after a crash, reconcile by external_id, never POST again. */
   claimCheckCreation(id: string): boolean {
     return (
