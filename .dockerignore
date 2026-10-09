@@ -11,3 +11,11 @@ packages/**/node_modules/
 packages/**/dist/
 packages/**/coverage/
 packages/control-plane/.wrangler/
+!packages/review-controller/
+!review-policies/malicious-code/v1/policy.json
+packages/review-controller/node_modules/
+packages/review-controller/dist/
+packages/review-controller/coverage/
+**/.env*
+**/*.pem
+**/*.key

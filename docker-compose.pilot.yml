@@ -1,0 +1,64 @@
+# Standalone GCP pilot stack; do not combine with the S3/Litestream base stack.
+# Pin images by registry @sha256 digest or verified locally loaded sha256 image ID.
+name: openinspect-pilot
+services:
+  control-plane:
+    image: ${CONTROL_PLANE_IMAGE:?Set the control-plane image digest}
+    user: "1000:1000"
+    env_file: ${CONTROL_PLANE_ENV_FILE:?Set the private control-plane environment file}
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      DATA_DIR: /data
+      OBJECT_STORE_PROVIDER: gcs
+      SANDBOX_PROVIDER: vercel
+      LITESTREAM_BUCKET: ""
+    volumes:
+      - type: bind
+        source: /var/lib/openinspect-staging/control-plane
+        target: /data
+        bind:
+          create_host_path: false
+    ports: ["127.0.0.1:8787:8787"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 40s
+
+  review-controller:
+    image: ${REVIEW_CONTROLLER_IMAGE:?Set the review-controller image digest}
+    user: "1001:1001"
+    env_file: ${REVIEW_CONTROLLER_ENV_FILE:?Set the private controller environment file}
+    environment:
+      REVIEW_HOSTNAME: 0.0.0.0
+      REVIEW_PORT: "8788"
+      REVIEW_DATABASE_PATH: /data/runs.db
+      REVIEW_CONTROL_PLANE_ORIGIN: http://control-plane:8787
+      REVIEW_APP_KEY_FILE: /run/secrets/github-app.pem
+      REVIEW_SERVICE_SECRET_FILE: /run/secrets/review-service-secret
+    volumes:
+      - type: bind
+        source: /var/lib/openinspect-staging/review-controller/data
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/openinspect-staging/review-controller/secrets
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+    ports: ["127.0.0.1:8788:8788"]
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=128m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 40s
