@@ -64,3 +64,31 @@ export function bindCurrentPullRequest(
     throw new Error("GITHUB_REVIEW_REVISION_REJECTED");
   }
 }
+
+/** Fresh GitHub metadata is required immediately before publishing a verdict. */
+export function isReviewBindingCurrent(
+  policy: ReviewAdmissionPolicy,
+  binding: ReviewBinding,
+  githubMetadata: unknown,
+  currentMainSha: string
+): boolean {
+  const parsed = pullRequest.safeParse(githubMetadata);
+  if (!parsed.success) return false;
+  const pr = parsed.data;
+  return (
+    [pr.base.repo, pr.head.repo].every(
+      (repo) =>
+        String(repo.id) === policy.repositoryId &&
+        String(repo.owner.id) === policy.repositoryOwnerId &&
+        repo.full_name === policy.repository
+    ) &&
+    binding.repositoryId === policy.repositoryId &&
+    binding.pullRequest === pr.number &&
+    binding.policyDigest === policy.policyDigest &&
+    binding.modelDigest === policy.modelDigest &&
+    pr.base.ref === "main" &&
+    pr.base.sha === currentMainSha &&
+    binding.baseSha === pr.base.sha &&
+    binding.headSha === pr.head.sha
+  );
+}

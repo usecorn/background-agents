@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bindCurrentPullRequest } from "./pr-binding";
+import { bindCurrentPullRequest, isReviewBindingCurrent } from "./pr-binding";
 
 const sha = (character: string) => character.repeat(40);
 const policy = {
@@ -118,4 +118,24 @@ describe("bindCurrentPullRequest", () => {
       );
     }
   );
+});
+
+describe("publication freshness", () => {
+  it("requires current base/head and server policy", () => {
+    const binding = bindCurrentPullRequest(policy, admission, metadata(), sha("a"));
+    expect(isReviewBindingCurrent(policy, binding, metadata(), sha("a"))).toBe(true);
+    expect(isReviewBindingCurrent(policy, binding, metadata(), sha("d"))).toBe(false);
+    const changed = metadata();
+    changed.head.sha = sha("d");
+    expect(isReviewBindingCurrent(policy, binding, changed, sha("a"))).toBe(false);
+    expect(
+      isReviewBindingCurrent(
+        { ...policy, policyDigest: "f".repeat(64) },
+        binding,
+        metadata(),
+        sha("a")
+      )
+    ).toBe(false);
+    expect(isReviewBindingCurrent(policy, binding, null, sha("a"))).toBe(false);
+  });
 });

@@ -21,6 +21,9 @@ Implemented building blocks:
 - `review-result.ts` validates the final JSON response against a controller-owned file manifest and
   six-class coverage. Prose, missing scope, contradictory findings and unsupported files cannot
   produce a passing verdict.
+- `check-recovery.ts` connects durable creation intents to App-owned check lookup, including
+  recovery after an accepted POST loses its response. Missing ambiguous attempts stay pending
+  instead of generating duplicate checks.
 - `run-store.ts` records revision bindings, attempts, session IDs, deadlines and publication
   revisions in SQLite. Duplicate starts reuse the current run; only explicit rerun creates another
   attempt. Late/superseded completions cannot overwrite a current verdict. Publication retries
