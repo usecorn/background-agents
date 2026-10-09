@@ -27,6 +27,56 @@ export class GitHubReviewClient {
     return { metadata, mainSha: main.sha };
   }
 
+  /** Recover a possibly accepted POST by its immutable attempt identity. */
+  async findCheck(headSha: string, runId: string, appId: string): Promise<string | null> {
+    sha.parse(headSha);
+    numericId.parse(appId);
+    z.string()
+      .regex(/^[A-Za-z0-9_-]{1,128}$/)
+      .parse(runId);
+    const pageSchema = z.object({
+      total_count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      check_runs: z
+        .array(
+          checkResponse.extend({
+            name: z.string(),
+            head_sha: sha,
+            external_id: z.string().nullable(),
+            app: z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+          })
+        )
+        .max(100),
+    });
+    let found: string | null = null;
+    let expectedTotal: number | undefined;
+    let seen = 0;
+    // Bound API work; hitting the bound is an error, never proof of absence.
+    for (let page = 1; page <= 100; page++) {
+      const result = pageSchema.parse(
+        await this.api(`/commits/${headSha}/check-runs?filter=all&per_page=100&page=${page}`)
+      );
+      expectedTotal ??= result.total_count;
+      if (result.total_count !== expectedTotal) throw new Error("GITHUB_CHECK_LIST_CHANGED");
+      for (const check of result.check_runs) {
+        if (
+          check.name === REVIEW_CHECK_NAME &&
+          check.head_sha === headSha &&
+          check.external_id === runId &&
+          String(check.app.id) === appId
+        ) {
+          if (found !== null) throw new Error("GITHUB_CHECK_IDENTITY_AMBIGUOUS");
+          found = String(check.id);
+        }
+      }
+      seen += result.check_runs.length;
+      if (seen === expectedTotal) return found;
+      if (seen > expectedTotal || result.check_runs.length < 100) {
+        throw new Error("GITHUB_CHECK_LIST_INCOMPLETE");
+      }
+    }
+    throw new Error("GITHUB_CHECK_LIST_INCOMPLETE");
+  }
+
   async createCheck(input: { headSha: string; runId: string }): Promise<string> {
     sha.parse(input.headSha);
     z.string()

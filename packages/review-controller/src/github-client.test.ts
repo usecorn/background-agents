@@ -78,4 +78,70 @@ describe("GitHubReviewClient", () => {
     ).rejects.toThrow();
     expect(request).not.toHaveBeenCalled();
   });
+  it("recovers only the exact attempt owned by the configured App", async () => {
+    const check = {
+      id: 123,
+      name: "Malicious code review",
+      head_sha: "a".repeat(40),
+      external_id: "run-7",
+      app: { id: 456 },
+    };
+    const { client } = setup([
+      json({
+        total_count: 4,
+        check_runs: [
+          { ...check, id: 1, app: { id: 999 } },
+          { ...check, id: 2, external_id: "old-run" },
+          { ...check, id: 3, head_sha: "b".repeat(40) },
+          check,
+        ],
+      }),
+    ]);
+    expect(await client.findCheck("a".repeat(40), "run-7", "456")).toBe("123");
+  });
+  it("searches past the first page, including older attempts", async () => {
+    const unrelated = {
+      id: 1,
+      name: "CI",
+      head_sha: "a".repeat(40),
+      external_id: null,
+      app: { id: 456 },
+    };
+    const { client, request } = setup([
+      json({ total_count: 101, check_runs: Array.from({ length: 100 }, () => unrelated) }),
+      json({
+        total_count: 101,
+        check_runs: [
+          { ...unrelated, id: 123, name: "Malicious code review", external_id: "run-7" },
+        ],
+      }),
+    ]);
+    expect(await client.findCheck("a".repeat(40), "run-7", "456")).toBe("123");
+    expect(String(request.mock.calls[1][0])).toContain("filter=all&per_page=100&page=2");
+  });
+  it("rejects duplicate check identities instead of guessing", async () => {
+    const check = {
+      id: 123,
+      name: "Malicious code review",
+      head_sha: "a".repeat(40),
+      external_id: "run-7",
+      app: { id: 456 },
+    };
+    const { client } = setup([
+      json({ total_count: 2, check_runs: [check, { ...check, id: 124 }] }),
+    ]);
+    await expect(client.findCheck("a".repeat(40), "run-7", "456")).rejects.toThrow(
+      "GITHUB_CHECK_IDENTITY_AMBIGUOUS"
+    );
+  });
+  it("distinguishes confirmed absence from an incomplete page", async () => {
+    const { client } = setup([
+      json({ total_count: 0, check_runs: [] }),
+      json({ total_count: 1, check_runs: [] }),
+    ]);
+    expect(await client.findCheck("a".repeat(40), "run-7", "456")).toBeNull();
+    await expect(client.findCheck("a".repeat(40), "run-7", "456")).rejects.toThrow(
+      "GITHUB_CHECK_LIST_INCOMPLETE"
+    );
+  });
 });

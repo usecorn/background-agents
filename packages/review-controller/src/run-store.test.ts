@@ -95,4 +95,22 @@ describe("durable review run lifecycle", () => {
     expect(store.markPublished(run.id, "5678", runningRevision)).toBe(false);
     expect(store.pendingPublication().map((row) => row.id)).toEqual([run.id]);
   });
+  it("persists check creation intent before an ambiguous network call", () => {
+    const run = store.start(binding, 1000, 2000).run;
+    expect(store.claimCheckCreation(run.id)).toBe(true);
+    expect(store.claimCheckCreation(run.id)).toBe(false);
+    store.close();
+    store = new ReviewRunStore(join(directory, "runs.db"));
+    expect(store.claimCheckCreation(run.id)).toBe(false);
+    expect(store.bindCheck(run.id, "5678")).toBe(true);
+    expect(store.bindCheck(run.id, "5678")).toBe(true);
+    expect(store.bindCheck(run.id, "9999")).toBe(false);
+    expect(store.get(run.id)?.checkId).toBe("5678");
+    expect(store.pendingPublication().map((row) => row.id)).toEqual([run.id]);
+  });
+  it("does not create checks for attempts already superseded", () => {
+    const old = store.start(binding, 1000, 2000).run;
+    store.start({ ...binding, headSha: "f".repeat(40) }, 1100, 2000);
+    expect(store.claimCheckCreation(old.id)).toBe(false);
+  });
 });

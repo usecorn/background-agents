@@ -63,7 +63,7 @@ export class ReviewRunStore {
     chmodSync(path, 0o600);
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
     const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
-    if (version !== 0 && version !== 1) {
+    if (version !== 0 && version !== 1 && version !== 2) {
       this.db.close();
       throw new Error("Unsupported review store schema version");
     }
@@ -82,7 +82,10 @@ export class ReviewRunStore {
         runId TEXT NOT NULL REFERENCES review_runs(id),
         PRIMARY KEY(repositoryId,pullRequest)
       );
-      PRAGMA user_version=1;
+      CREATE TABLE IF NOT EXISTS check_creation_intents (
+        runId TEXT PRIMARY KEY REFERENCES review_runs(id)
+      );
+      PRAGMA user_version=2;
     `);
   }
 
@@ -189,6 +192,27 @@ export class ReviewRunStore {
       .prepare(`SELECT * FROM review_runs WHERE revision>publishedRevision AND ${CURRENT}`)
       .all()
       .map((row) => decode(row as unknown as Row));
+  }
+
+  /** Commit before POST; after a crash, reconcile by external_id, never POST again. */
+  claimCheckCreation(id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO check_creation_intents(runId)
+       SELECT id FROM review_runs WHERE id=? AND checkId IS NULL AND ${CURRENT}`
+        )
+        .run(id).changes === 1
+    );
+  }
+
+  bindCheck(id: string, checkId: string): boolean {
+    if (!/^[1-9][0-9]*$/.test(checkId)) throw new Error("Invalid check ID");
+    return (
+      this.db
+        .prepare(`UPDATE review_runs SET checkId=? WHERE id=? AND (checkId IS NULL OR checkId=?)`)
+        .run(checkId, id, checkId).changes === 1
+    );
   }
 
   markPublished(id: string, checkId: string, revision: number): boolean {
