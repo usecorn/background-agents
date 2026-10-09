@@ -1,8 +1,8 @@
 """Load provider-written review launch data, never repository configuration.
 
 The provider must place the context and destination in a private trusted parent.
-The context contains no credentials. This fresh-launch protocol intentionally
-refuses snapshot restores until a restore-specific verifier is supplied.
+The context contains no credentials. Restores verify retained source before
+reusing trusted state; they never recreate missing state or repair source.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from .harness.base import HarnessId
 from .review_profile import ReviewProfile
 from .review_source import ReviewSourceError
-from .review_staging import stage_source
+from .review_staging import stage_source, verify_staged_source
 from .runtime_config import BootMode
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ def prepare_review_launch(context: Path, config: RuntimeConfig) -> ReviewProfile
             or data["model"] != model.model
             or model.provider not in {"anthropic", "openai"}
             or config.harness is not HarnessId.OPENCODE
-            or BootMode.from_env(os.environ) is not BootMode.FRESH
+            or BootMode.from_env(os.environ) not in {BootMode.FRESH, BootMode.SNAPSHOT_RESTORE}
             or not isinstance(data["hashes"], dict)
         ):
             raise ValueError
@@ -82,7 +82,18 @@ def prepare_review_launch(context: Path, config: RuntimeConfig) -> ReviewProfile
             raise ValueError
     except (OSError, ValueError, TypeError, KeyError):
         raise ReviewSourceError("INVALID_REVIEW_LAUNCH") from None
-    staged = stage_source(checkout, data["hashes"], destination)
+    if BootMode.from_env(os.environ) is BootMode.SNAPSHOT_RESTORE:
+        if any(
+            path.is_symlink() or not path.is_dir()
+            for path in [
+                state,
+                *(state / name for name in ("home", "config", "data", "cache", "state", "work")),
+            ]
+        ):
+            raise ReviewSourceError("INVALID_REVIEW_LAUNCH")
+        staged = verify_staged_source(data["hashes"], destination)
+    else:
+        staged = stage_source(checkout, data["hashes"], destination)
     return ReviewProfile(
         staged.source_root, staged.manifest_path, state, model.provider, model.model
     )

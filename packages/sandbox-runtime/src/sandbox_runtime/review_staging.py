@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,6 +27,36 @@ if TYPE_CHECKING:
 class StagedSource:
     source_root: Path
     manifest_path: Path
+
+
+def verify_staged_source(hashes: Mapping[str, str], destination: Path) -> StagedSource:
+    """Validate retained bytes without rebuilding or repairing a damaged snapshot."""
+    staged = StagedSource(destination / "source", destination / "manifest.json")
+    try:
+        for path in (destination, staged.source_root):
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o222:
+                raise ReviewSourceError("INVALID_RETAINED_SOURCE")
+        fd = os.open(staged.manifest_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_mode & 0o222:
+                raise ReviewSourceError("INVALID_RETAINED_SOURCE")
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024 or json.loads(raw) != sorted(hashes):
+            raise ReviewSourceError("INVALID_RETAINED_MANIFEST")
+        total = 0
+        with ReviewSource(staged.source_root, list(hashes)) as source:
+            for relative_path, expected in hashes.items():
+                data = source.read(relative_path).encode("utf-8")
+                total += len(data)
+                if total > MAX_SEARCH_BYTES:
+                    raise ReviewSourceError("SOURCE_SCOPE_TOO_LARGE")
+                if hashlib.sha256(data).hexdigest() != expected:
+                    raise ReviewSourceError("SOURCE_DIGEST_MISMATCH")
+        return staged
+    except (OSError, ValueError, TypeError):
+        raise ReviewSourceError("INVALID_RETAINED_SOURCE") from None
 
 
 def stage_source(checkout: Path, hashes: Mapping[str, str], destination: Path) -> StagedSource:

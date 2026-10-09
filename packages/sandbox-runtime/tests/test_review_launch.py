@@ -92,3 +92,42 @@ def test_untrusted_or_incompatible_context_never_stages(tmp_path, monkeypatch, c
     with pytest.raises(ReviewSourceError, match="INVALID_REVIEW_LAUNCH"):
         prepare_review_launch(context, config)
     assert not (tmp_path / "attempt").exists()
+
+
+def test_restore_verifies_retained_source_and_preserves_state(tmp_path, monkeypatch):
+    context, config = setup_launch(tmp_path)
+    original = prepare_review_launch(context, config)
+    for directory in ("home", "config", "data", "cache", "state", "work"):
+        (original.state_root / directory).mkdir(parents=True)
+    marker = original.state_root / "data" / "conversation-marker"
+    marker.write_text("retained")
+    monkeypatch.setenv("RESTORED_FROM_SNAPSHOT", "true")
+    restored = prepare_review_launch(context, config)
+    assert restored == original
+    assert marker.read_text() == "retained"
+
+
+@pytest.mark.parametrize("damage", ["source", "manifest", "missing_state"])
+def test_restore_refuses_damaged_snapshot_without_recreating_it(tmp_path, monkeypatch, damage):
+    context, config = setup_launch(tmp_path)
+    original = prepare_review_launch(context, config)
+    for directory in ("home", "config", "data", "cache", "state", "work"):
+        (original.state_root / directory).mkdir(parents=True)
+    if damage == "source":
+        target = original.source_root / "a"
+        target.chmod(0o600)
+        target.write_text("changed")
+        target.chmod(0o400)
+    elif damage == "manifest":
+        original.manifest_path.chmod(0o600)
+        original.manifest_path.write_text("[]")
+        original.manifest_path.chmod(0o400)
+    else:
+        (original.state_root / "data").rmdir()
+    monkeypatch.setenv("RESTORED_FROM_SNAPSHOT", "true")
+    with pytest.raises(ReviewSourceError):
+        prepare_review_launch(context, config)
+    if damage == "source":
+        assert (original.source_root / "a").read_text() == "changed"
+    if damage == "missing_state":
+        assert not (original.state_root / "data").exists()

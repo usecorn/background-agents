@@ -168,6 +168,37 @@ def test_hostile_configuration_cannot_change_review_tools(tmp_path, monkeypatch,
             ), "Forbidden shell did not return a tool error"
         assert "HOSTILE_INSTRUCTIONS_SENTINEL" not in json.dumps(captured)
         assert not marker.exists(), "Repository plugin or lifecycle script ran"
+        if tool_name == "review_source_read_source":
+            previous_messages = call(f"/session/{session}/message")
+            previous_ids = {message["info"]["id"] for message in previous_messages}
+            assert previous_ids
+            process.terminate()
+            process.wait(timeout=10)
+            process = subprocess.Popen(
+                [BINARY, "serve", "--hostname", "127.0.0.1", "--port", str(port)],
+                cwd=profile.state_root / "work",
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    call("/global/health")
+                    break
+                except OSError:
+                    assert process.poll() is None and time.monotonic() < deadline
+                    time.sleep(0.1)
+            assert call(f"/session/{session}")["id"] == session
+            restored_messages = call(f"/session/{session}/message")
+            assert previous_ids <= {message["info"]["id"] for message in restored_messages}
+            followup = call(
+                f"/session/{session}/message",
+                {"parts": [{"type": "text", "text": "Continue the saved review."}]},
+            )
+            assert not followup["info"].get("error"), followup
+            assert followup["info"]["id"] not in previous_ids
+            assert not marker.exists()
     finally:
         process.terminate()
         try:
