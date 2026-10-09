@@ -5,6 +5,9 @@ must never receive its credentials or database.
 
 Implemented building blocks:
 
+- `http-handler.ts` exposes bodyless authenticated `POST /reviews` and PR-scoped `GET /reviews/:id`.
+  Admission fetches GitHub metadata and derives the run binding server-side; requests cannot choose
+  the model, policy or verdict.
 - `github-oidc.ts` verifies GitHub signatures, issuer, audience, time bounds, repository/owner IDs,
   PR event and exact workflow path/ref. The signed PR number and merge-ref SHA must still be checked
   against current GitHub PR metadata before creating a run. Fork PRs and other event types are
