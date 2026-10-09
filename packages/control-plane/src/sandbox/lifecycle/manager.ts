@@ -11,6 +11,9 @@
  */
 
 import type { ServerMessage } from "@open-inspect/shared/types/server-messages";
+import { extractProviderAndModel } from "@open-inspect/shared/models";
+import type { ManagedReviewStore } from "../../session/managed-review";
+import type { ManagedReviewSandboxConfig } from "../providers/vercel/provider";
 import type { SandboxStatus } from "@open-inspect/shared/types/sessions";
 import type { SandboxEvent } from "@open-inspect/shared/types/sandbox-events";
 import type {
@@ -338,6 +341,10 @@ interface AlarmContext extends WatchdogContext {
  * Complete lifecycle configuration.
  */
 export interface SandboxLifecycleConfig extends AlarmPolicyConfig, SandboxLaunchConfig {
+  managedReview?: {
+    store: ManagedReviewStore;
+    create: (config: ManagedReviewSandboxConfig) => Promise<CreateSandboxResult>;
+  };
   /** Persist a user-visible lifecycle warning in the session event stream. */
   recordWarning?: (message: string, eventId: string) => void;
   /** Pump the message queue once a deferred connect-timeout re-drive may proceed. */
@@ -531,6 +538,9 @@ export class SandboxLifecycleManager
    * subject to the circuit breaker.
    */
   async spawnSandbox(intent: SandboxStartupIntent = "spawn"): Promise<void> {
+    // Only explicit controller launch/restore may provision managed compute.
+    // Ordinary queue/watchdog retries must not replay an automated review.
+    if (this.config.managedReview?.store.isManaged()) return;
     const startup = this.shutdown.startupDecision();
     if (startup.kind === "hold") return;
     if (startup.kind === "restore_snapshot" || startup.kind === "resume_retained") {
@@ -644,6 +654,71 @@ export class SandboxLifecycleManager
     this.broadcaster.broadcast({
       type: intent === "warm" ? "sandbox_warming" : "sandbox_spawning",
     });
+  }
+
+  /** Trusted controller entrypoint, with no repository setup or automatic replay. */
+  async launchManagedReview(
+    input: Pick<
+      ManagedReviewSandboxConfig,
+      "provider" | "model" | "providerApiKey" | "trustedBundle" | "timeoutSeconds"
+    > & {
+      runId: string;
+      messageId: string;
+    }
+  ): Promise<boolean> {
+    const managed = this.config.managedReview;
+    const session = this.sessionContext.getSession();
+    if (
+      !managed ||
+      !session ||
+      session.harness !== "opencode" ||
+      !session.model ||
+      !managed.store.matches(input.runId, input.messageId)
+    ) {
+      throw new Error("INVALID_MANAGED_REVIEW_LAUNCH");
+    }
+    const agent = extractProviderAndModel(session.model);
+    if (agent.provider !== input.provider || agent.model !== input.model) {
+      throw new Error("INVALID_MANAGED_REVIEW_LAUNCH");
+    }
+    if (!managed.store.claimLaunch(input.runId, input.messageId)) return false;
+    if (this.isSpawningSandbox || this.isTerminatingSandbox || this.shutdown.isHolding()) {
+      throw new Error("MANAGED_REVIEW_LAUNCH_UNAVAILABLE");
+    }
+    this.isSpawningSandbox = true;
+    this.providerStartupPending = true;
+    const generation = this.spawnGeneration(session, Date.now());
+    try {
+      const { sandboxAuthToken, expectedSandboxId } = await this.reserveSpawnIdentity(generation, {
+        preserveProviderObjectId: false,
+        shutdownPolicy: shutdownPolicyForLaunch("new", null),
+      });
+      const result = await managed.create({
+        sessionId: session.session_name || session.id,
+        sandboxId: expectedSandboxId,
+        sandboxAuthToken,
+        controlPlaneUrl: this.config.controlPlaneUrl,
+        provider: input.provider,
+        model: input.model,
+        providerApiKey: input.providerApiKey,
+        trustedBundle: input.trustedBundle,
+        timeoutSeconds: input.timeoutSeconds,
+      });
+      if (
+        !(await this.claimProviderStartup(generation, result.providerObjectId, result.lifetime))
+      ) {
+        throw new Error("MANAGED_REVIEW_LAUNCH_FAILED");
+      }
+      return true;
+    } catch {
+      // Preserve the launch claim even on transport failure. Retrying a paid
+      // model execution requires an explicit new review attempt.
+      this.failAttempt(generation, "spawning", "MANAGED_REVIEW_LAUNCH_FAILED");
+      throw new Error("MANAGED_REVIEW_LAUNCH_FAILED");
+    } finally {
+      this.isSpawningSandbox = false;
+      this.providerStartupPending = false;
+    }
   }
 
   /** Circuit-breaker admission for decisions that launch provider work. */

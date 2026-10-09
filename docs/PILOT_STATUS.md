@@ -2,8 +2,8 @@
 
 This branch is an implementation checkpoint for review, not a deployable malicious-code gate. The
 controller accepts review requests, retrieves/seals existing OpenInspect results, and manages GitHub
-checks, but managed session creation and Vercel execution are not connected yet. Do not enable a
-required check against this implementation yet.
+checks, but the controller does not yet create sessions or request managed Vercel execution. Do not
+enable a required check against this implementation yet.
 
 ## Source and infrastructure
 
@@ -22,9 +22,10 @@ superseded by this handoff and DevOps.
 - `packages/control-plane`: Node-hostable OpenInspect service, GCS adapter, managed-session prompt
   locks, and dedicated Vercel managed-review creation/restore methods. Managed restore uses the
   retained context without uploading replacement source or falling back to a base image. These
-  methods still need lifecycle/controller wiring. See `docs/CONTROL_PLANE_CONTAINER.md` for existing
-  packaging. Application deployment needs separate persistent control-plane/controller directories
-  using the host ownership from Terraform.
+  creation method now has a controller-only lifecycle launch endpoint with a durable launch claim.
+  Session creation, controller scheduling and managed continuation still need wiring. See
+  `docs/CONTROL_PLANE_CONTAINER.md` for existing packaging. Application deployment needs separate
+  persistent control-plane/controller directories using the host ownership from Terraform.
 - `packages/sandbox-runtime`: explicit managed launch, hash-verified source staging, constrained
   OpenCode configuration, read-only/network-isolated MCP tools, and strict conversation recovery.
 - `packages/review-controller/src/source-bundle.ts`: creates a regular-file tar from validated text
@@ -54,14 +55,23 @@ REVIEW_RUNTIME_PYTHON=/absolute/path/to/sandbox-runtime/.venv/bin/python npm tes
 
 Without that variable the cross-language case is explicitly skipped.
 
-## Outstanding before application acceptance
+## First working run and later acceptance
+
+The immediate milestone is one synthetic PR, an isolated review, an inspectable session and an
+optional GitHub check. Preserve the existing implementation; extended recovery, real-data
+encryption, overrides, autonomous deployment and the larger evaluation corpus follow that first run.
+This ordering does not claim those later acceptance requirements are complete.
+
+The admin prerequisites are in
+[PILOT_GITHUB_BOOTSTRAP_HANDOFF.md](PILOT_GITHUB_BOOTSTRAP_HANDOFF.md).
 
 1. Wire managed session creation and controller execution to source acquisition, policy, Vercel
    create/restore. Terminal retrieval, coverage validation, sealing and publication are wired into
    the controller scheduler, but it does not yet launch complete reviews.
-2. Resolve provider credential custody: current OpenCode profile receives a provider key while its
-   confined source tools cannot access it. The DevOps handoff's stricter controller-only provider
-   custody requires a provider broker before acceptance under that boundary.
+2. Use the existing model API key for the synthetic pilot, as approved by the current DevOps
+   application-readiness handoff. The confined source tools cannot access it. No provider broker is
+   required for this milestone. GitHub App, SCM and ordinary OAuth credentials remain unavailable to
+   managed workers, including through credential callback routes.
 3. Implement application encryption/KMS custody, retention/expiry, complete backups and restoration.
 4. Finish UI observation/continuation, authorized overrides, reruns and scoped autonomous driver.
 5. Configure the pilot GitHub App, selected fixture repository, CI authentication and expected-App
@@ -80,6 +90,9 @@ unrestricted proxy.
 
 The `review-controller` service principal alone can call:
 
+- `POST /managed-reviews/:sessionId/launch` with JSON `{runId, messageId, bundleBase64}`. The bundle
+  must be controller-built. A persistent claim prevents duplicate model starts; an ambiguous or
+  failed launch requires investigation or a new review attempt.
 - `GET /managed-reviews/:sessionId/result?runId=...&messageId=...`
 - `POST /managed-reviews/:sessionId/seal` with JSON `{runId, messageId, responseDigest}`.
 

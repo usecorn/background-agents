@@ -81,6 +81,8 @@ it("only the signed review controller can retrieve and seal a bound terminal res
     1
   );
   const resultUrl = `https://test.local/managed-reviews/${sessionName}/result?runId=run-1&messageId=message-1`;
+  const launchUrl = `https://test.local/managed-reviews/${sessionName}/launch`;
+  expect((await SELF.fetch(launchUrl, { method: "POST", body: "{}" })).status).toBe(401);
   expect((await SELF.fetch(resultUrl)).status).toBe(401);
   for (const service of ["github-bot", "slack-bot", "linear-bot"] as const) {
     const headers = await buildServiceAuthHeaders({
@@ -90,6 +92,16 @@ it("only the signed review controller can retrieve and seal a bound terminal res
       url: resultUrl,
     });
     expect((await SELF.fetch(resultUrl, { headers })).status).toBe(403);
+    const launchHeaders = await buildServiceAuthHeaders({
+      service,
+      secret: `test-service-secret-${service}`,
+      method: "POST",
+      url: launchUrl,
+      body: "{}",
+    });
+    expect(
+      (await SELF.fetch(launchUrl, { method: "POST", headers: launchHeaders, body: "{}" })).status
+    ).toBe(403);
   }
   const headers = await buildServiceAuthHeaders({
     service: "review-controller",
@@ -97,6 +109,16 @@ it("only the signed review controller can retrieve and seal a bound terminal res
     method: "GET",
     url: resultUrl,
   });
+  const launchHeaders = await buildServiceAuthHeaders({
+    service: "review-controller",
+    secret: "test-service-secret-review-controller",
+    method: "POST",
+    url: launchUrl,
+    body: "{}",
+  });
+  expect(
+    (await SELF.fetch(launchUrl, { method: "POST", headers: launchHeaders, body: "{}" })).status
+  ).toBe(400);
   const response = await SELF.fetch(resultUrl, { headers });
   expect(response.status).toBe(200);
   expect(response.headers.get("cache-control")).toContain("no-store");

@@ -74,6 +74,7 @@ export class SandboxHandler {
     ) => Promise<boolean>,
     private readonly failSandbox: (reason: string) => Promise<void>,
     private readonly generateId: () => string,
+    private readonly isManagedReview: () => boolean,
     private readonly now: () => number = Date.now
   ) {}
 
@@ -297,6 +298,12 @@ export class SandboxHandler {
   }
 
   async openaiTokenRefresh(log: Logger): Promise<Response> {
+    if (this.isManagedReview()) {
+      return Response.json(
+        { error: "Credentials unavailable for managed reviews" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     const session = this.sessionCoreRepository.getSession();
     if (!session) {
       return Response.json({ error: "No session" }, { status: 404 });
@@ -332,6 +339,12 @@ export class SandboxHandler {
   }
 
   async xaiTokenRefresh(log: Logger): Promise<Response> {
+    if (this.isManagedReview()) {
+      return Response.json(
+        { error: "Credentials unavailable for managed reviews" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     const session = this.sessionCoreRepository.getSession();
     if (!session) {
       return Response.json({ error: "No session" }, { status: 404 });
@@ -389,6 +402,12 @@ export class SandboxHandler {
   }
 
   async scmCredentials(log: Logger): Promise<Response> {
+    if (this.isManagedReview()) {
+      return Response.json(
+        { error: "Credentials unavailable for managed reviews" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     const session = this.sessionCoreRepository.getSession();
     if (!session) {
       return Response.json({ error: "No session" }, { status: 404 });

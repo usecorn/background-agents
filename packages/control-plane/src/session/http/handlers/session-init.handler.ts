@@ -286,8 +286,10 @@ export class SessionInitHandler {
       }
     });
 
-    log.info("Triggering sandbox spawn for new session");
-    this.scheduleWarmSandbox();
+    if (!body.managedReview) {
+      log.info("Triggering sandbox spawn for new session");
+      this.scheduleWarmSandbox();
+    }
 
     return Response.json({ sessionId, status: "created" });
   }

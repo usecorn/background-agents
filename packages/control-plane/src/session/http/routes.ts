@@ -23,6 +23,7 @@ export interface SessionInternalRoute {
 export interface SessionInternalRouteHandlers {
   init: SessionInternalRouteHandler;
   managedReviewResult: SessionInternalRouteHandler;
+  managedReviewLaunch: SessionInternalRouteHandler;
   managedReviewSeal: SessionInternalRouteHandler;
   state: SessionInternalRouteHandler;
   snapshot: SessionInternalRouteHandler;
@@ -79,6 +80,11 @@ export function createSessionInternalRoutes(
       method: "GET",
       path: SessionInternalPaths.managedReviewResult,
       handler: handlers.managedReviewResult,
+    },
+    {
+      method: "POST",
+      path: SessionInternalPaths.managedReviewLaunch,
+      handler: handlers.managedReviewLaunch,
     },
     {
       method: "POST",

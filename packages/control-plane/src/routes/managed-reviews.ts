@@ -31,3 +31,12 @@ managedReviewRoutes.post("/managed-reviews/:id/seal", controller, (c) =>
     })
   )
 );
+managedReviewRoutes.post("/managed-reviews/:id/launch", controller, (c) =>
+  dispatchSession(c, async (request, _env, params, ctx) =>
+    ctx.sessionRuntime.fetch(params.id, SessionInternalPaths.managedReviewLaunch, {
+      method: "POST",
+      body: await request.text(),
+      signal: request.signal,
+    })
+  )
+);

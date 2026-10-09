@@ -1,4 +1,5 @@
 import { ManagedReviewStore } from "./managed-review";
+import { VercelSandboxProvider } from "../sandbox/providers/vercel/provider";
 /**
  * Composition root for one session runtime.
  *
@@ -23,7 +24,7 @@ import { ManagedReviewStore } from "./managed-review";
  */
 
 import { resolveAppName } from "@open-inspect/shared/app-name";
-import { DEFAULT_MODEL } from "@open-inspect/shared/models";
+import { DEFAULT_MODEL, extractProviderAndModel } from "@open-inspect/shared/models";
 import { sandboxPromptBlockReason } from "@open-inspect/shared/types/sandbox-shutdown";
 import { generateId, hashToken } from "../auth/crypto";
 import { getUserAuth } from "../auth/user/runtime";
@@ -179,6 +180,7 @@ import type { SessionWebSocket } from "../platform-ports";
  * or the connection will be closed. This prevents resource abuse from
  * unauthenticated connections that never complete the handshake.
  */
+const MANAGED_REVIEW_TIMEOUT_SECONDS = 2 * 60 * 60;
 const WS_AUTH_TIMEOUT_MS = 30000; // 30 seconds
 
 /**
@@ -498,6 +500,7 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
     retireAccess: () => access.retireShutdownAccess(),
   });
   const lifecycleManager = createLifecycleManager({
+    managedReviewStore: new ManagedReviewStore(sql),
     provider: sandboxProvider,
     shutdown,
     access,
@@ -541,7 +544,10 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
     participantService,
     callbackService,
     statusService,
-    (model) => userEnvResolver.getProviderAuthenticationError(model),
+    (model) =>
+      new ManagedReviewStore(sql).isManaged()
+        ? Promise.resolve(null)
+        : userEnvResolver.getProviderAuthenticationError(model),
     messageFailures,
     lifecycleManager,
     sessionIndexStore,
@@ -762,7 +768,8 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
     getScmCredentials,
     isValidSandboxToken,
     (reason) => messageQueue.handleFatalSandboxFailure(reason),
-    generateId
+    generateId,
+    () => new ManagedReviewStore(sql).isManaged()
   );
 
   const attachmentsHandler = new AttachmentsHandler(attachmentRepository, log);
@@ -921,9 +928,40 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
   });
 
   // Internal HTTP route table (transport wiring only).
-  const managedReviewHandler = new ManagedReviewHandler(sql, new ManagedReviewStore(sql));
+  const managedReviewHandler = new ManagedReviewHandler(
+    sql,
+    new ManagedReviewStore(sql),
+    async (runId, messageId, trustedBundle) => {
+      const session = sessionCoreRepository.getSession();
+      if (!session?.model || !env.ANTHROPIC_API_KEY)
+        throw new Error("MANAGED_REVIEW_CONFIGURATION_MISSING");
+      const agent = extractProviderAndModel(session.model);
+      if (agent.provider !== "anthropic") throw new Error("MANAGED_REVIEW_PROVIDER_UNAVAILABLE");
+      try {
+        return await lifecycleManager.launchManagedReview({
+          runId,
+          messageId,
+          trustedBundle,
+          provider: "anthropic",
+          model: agent.model,
+          providerApiKey: env.ANTHROPIC_API_KEY,
+          timeoutSeconds: MANAGED_REVIEW_TIMEOUT_SECONDS,
+        });
+      } catch {
+        const failure = messageFailures.record(
+          messageId,
+          "MANAGED_REVIEW_LAUNCH_FAILED",
+          Date.now(),
+          "pending"
+        );
+        if (failure) messageFailures.deliver(failure);
+        throw new Error("MANAGED_REVIEW_LAUNCH_FAILED");
+      }
+    }
+  );
   const routes = createSessionInternalRoutes({
     managedReviewResult: (_request, url) => managedReviewHandler.result(url),
+    managedReviewLaunch: (request) => managedReviewHandler.launch(request),
     managedReviewSeal: (request) => managedReviewHandler.seal(request),
     init: (request, _url, requestLog) => sessionInitHandler.init(request, requestLog),
     state: () => sessionLifecycleHandler.getState(),
@@ -1081,6 +1119,7 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
 }
 
 interface LifecycleManagerDeps {
+  managedReviewStore: ManagedReviewStore;
   recordWarning: (message: string, eventId: string) => void;
   resumeQueuedWork: () => Promise<void>;
   shutdown: SandboxShutdownLifecycle;
@@ -1168,6 +1207,15 @@ function createLifecycleManager(deps: LifecycleManagerDeps): SandboxLifecycleMan
   }
   const config = {
     ...DEFAULT_LIFECYCLE_CONFIG,
+    managedReview: {
+      store: deps.managedReviewStore,
+      create: (input: Parameters<VercelSandboxProvider["createManagedReviewSandbox"]>[0]) => {
+        if (!(provider instanceof VercelSandboxProvider)) {
+          throw new Error("MANAGED_REVIEW_REQUIRES_VERCEL");
+        }
+        return provider.createManagedReviewSandbox(input);
+      },
+    },
     controlPlaneUrl,
     model: DEFAULT_MODEL,
     // Re-derived per use until the session row exists: on the first-ever

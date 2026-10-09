@@ -77,6 +77,7 @@ export type SessionTraceExport = z.infer<typeof sessionTraceExportSchema>;
 export const SessionInternalPaths = {
   init: "/internal/init",
   managedReviewResult: "/internal/managed-review-result",
+  managedReviewLaunch: "/internal/managed-review-launch",
   managedReviewSeal: "/internal/managed-review-seal",
   state: "/internal/state",
   snapshot: "/internal/snapshot",

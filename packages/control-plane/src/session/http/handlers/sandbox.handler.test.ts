@@ -15,7 +15,7 @@ import type { SessionCoreRepository } from "../../session-core-repository";
 import type { SandboxRepository } from "../../sandbox-repository";
 import type { SessionSandboxEventProcessor } from "../../sandbox-events/processor";
 
-function createHandler() {
+function createHandler(isManagedReview = false) {
   const repository = {
     createEvent: vi.fn(),
     getProcessingMessage: vi.fn(),
@@ -56,6 +56,7 @@ function createHandler() {
     isValidSandboxToken,
     failSandbox,
     generateId,
+    () => isManagedReview,
     now
   );
 
@@ -92,6 +93,20 @@ function createHandler() {
 }
 
 describe("SandboxHandler", () => {
+  it.each(["openaiTokenRefresh", "xaiTokenRefresh", "scmCredentials"] as const)(
+    "refuses %s for managed reviews before resolving credentials",
+    async (method) => {
+      const deps = createHandler(true);
+      deps.getSession.mockReturnValue({ repo_owner: "fixture", repo_name: "test" } as SessionRow);
+      const response = await deps.handler[method]();
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(deps.refreshOpenAIToken).not.toHaveBeenCalled();
+      expect(deps.refreshXaiToken).not.toHaveBeenCalled();
+      expect(deps.getScmCredentials).not.toHaveBeenCalled();
+    }
+  );
+
   it("processes sandbox event and returns ok response", async () => {
     const { handler, processSandboxEvent } = createHandler();
     const event = {

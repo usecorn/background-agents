@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createNodeSqlStorage } from "../../../node/sqlite-storage";
 import { MANAGED_REVIEW_TABLE_SQL, ManagedReviewStore } from "../../managed-review";
 import { ManagedReviewHandler } from "./managed-review.handler";
@@ -101,4 +101,22 @@ it("refuses a completion that claims success but carries an error", async () => 
     JSON.stringify({ ...JSON.parse(row.data), error: "execution failed" })
   );
   expect(await (await handler.result(url)).json()).toMatchObject({ state: "incomplete" });
+});
+
+it("delivers only a bound controller bundle to the managed launcher", async () => {
+  const { db, store } = fixture("pending");
+  const launch = vi.fn(async () => true);
+  const handler = new ManagedReviewHandler(createNodeSqlStorage(db).sql, store, launch);
+  const request = (runId: string, bundleBase64 = "AQID") =>
+    new Request("http://internal/", {
+      method: "POST",
+      body: JSON.stringify({ runId, messageId: "message-1", bundleBase64 }),
+    });
+  expect((await handler.launch(request("other"))).status).toBe(404);
+  expect((await handler.launch(request("run-1", "bad archive!"))).status).toBe(400);
+  expect(launch).not.toHaveBeenCalled();
+  const response = await handler.launch(request("run-1"));
+  expect(response.status).toBe(202);
+  expect(await response.json()).toEqual({ launched: true });
+  expect(launch).toHaveBeenCalledWith("run-1", "message-1", new Uint8Array([1, 2, 3]));
 });

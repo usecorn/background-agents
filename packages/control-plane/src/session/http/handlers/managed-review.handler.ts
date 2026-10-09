@@ -14,13 +14,50 @@ const sealInput = identity
       .nullable(),
   })
   .strict();
+const launchInput = identity
+  .extend({
+    bundleBase64: z
+      .string()
+      .min(4)
+      .max(16 * 1024 * 1024)
+      .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  })
+  .strict();
 
 /** Internal session boundary. Only the controller-only external route may dispatch here. */
 export class ManagedReviewHandler {
   constructor(
     private readonly sql: SqlStorage,
-    private readonly store: ManagedReviewStore
+    private readonly store: ManagedReviewStore,
+    private readonly launcher?: (
+      runId: string,
+      messageId: string,
+      bundle: Uint8Array
+    ) => Promise<boolean>
   ) {}
+
+  async launch(request: Request): Promise<Response> {
+    let input;
+    try {
+      input = launchInput.parse(await request.json());
+    } catch {
+      return Response.json({ error: "INVALID_REVIEW_LAUNCH" }, { status: 400 });
+    }
+    if (!this.store.matches(input.runId, input.messageId)) {
+      return Response.json({ error: "REVIEW_NOT_FOUND" }, { status: 404 });
+    }
+    if (!this.launcher)
+      return Response.json({ error: "REVIEW_LAUNCH_UNAVAILABLE" }, { status: 503 });
+    try {
+      const bundle = Uint8Array.from(atob(input.bundleBase64), (character) =>
+        character.charCodeAt(0)
+      );
+      const launched = await this.launcher(input.runId, input.messageId, bundle);
+      return Response.json({ launched }, { status: 202 });
+    } catch {
+      return Response.json({ error: "REVIEW_LAUNCH_FAILED" }, { status: 503 });
+    }
+  }
 
   private async read(runId: string, messageId: string) {
     if (!this.store.matches(runId, messageId)) return null;

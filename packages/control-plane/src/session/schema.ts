@@ -766,6 +766,19 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     description: "Persist immutable managed review binding and seal",
     run: MANAGED_REVIEW_TABLE_SQL,
   },
+  {
+    id: 58,
+    description: "Persist managed review allocation claim before provider I/O",
+    run: (sql) => {
+      runMigration(
+        sql,
+        "ALTER TABLE managed_review ADD COLUMN launch_claimed INTEGER NOT NULL DEFAULT 0 CHECK (launch_claimed IN (0, 1))"
+      );
+      // Old sessions may already have executed. Never interpret a migration as
+      // permission to launch their initial review again.
+      sql.exec("UPDATE managed_review SET launch_claimed=1");
+    },
+  },
 ];
 
 function removePersistedHookOutputTails(sql: SqlStorage): void {
