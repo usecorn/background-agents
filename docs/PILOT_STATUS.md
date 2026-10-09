@@ -156,3 +156,29 @@ and returned `MANAGED_REVIEW_OWNER_UNAVAILABLE` (503), with no review created. T
 agreement while preserving the owner requirement. Both services restarted and recovered healthy; the
 signed refusal was verified again. Environment files are root-owned 0600 and controller SQLite is
 UID1001 mode0600. No model run, public ingress or fixture CI was started by this receipt.
+
+## Web deployment receipt
+
+The pilot web application is deployed at https://openinspect-pilot.vercel.app from source
+`87c13cf2710405bb2c5d554811ca57f5643cf111`. Vercel deployment
+`dpl_ErmHdyvbTWMm87QUoUyMd9ptnK2j` is READY. The project is the existing `openinspect-pilot` under
+`corn-previews`; its production target is this isolated pilot, not the Corn production application.
+The web app receives its own sig1 secret and the pilot control-plane URL, not model or GitHub App
+credentials. The control plane now has the matching web origin and operator-only admission settings.
+Its approved temporary Anthropic key is loaded privately. Health and authenticated missing-owner
+refusal were verified again after recreation.
+
+Verification: local production build passed; 21 focused web authentication/proxy tests passed; hosted
+Vercel build passed. HTTP `/login` returns200, anonymous `/api/sessions` returns401, and the existing
+headed browser renders “Sign-in is temporarily unavailable.” This is expected while controller
+DNS/TLS and OAuth bootstrap are pending. It is not proof of successful sign-in or session inspection.
+
+The first remote build exposed a missing upload dependency: `.vercelignore` excluded the shared
+coverage policy imported by the web Vitest configuration during TypeScript checking. The published
+fix includes that policy and its baseline data. Earlier CLI connection timeouts created no deployment;
+a direct Node API probe succeeded with `--dns-result-order=ipv4first`, and that process-local setting
+allowed deployment. No global networking configuration was changed.
+
+The TLS proxy image/configuration are staged but not running; see DevOps PR141's runtime-bootstrap
+handoff. OAuth client credentials, canonical owner sign-in, media provisioning, controller DNS/TLS,
+fixture Actions enablement, and the first real PR/model/session/check run remain outstanding.
