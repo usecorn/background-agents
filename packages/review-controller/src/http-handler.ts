@@ -49,8 +49,17 @@ export function createReviewHttpHandler(
       return reply(401, { error: "IDENTITY_REJECTED" });
     }
     // These routes have no caller-selectable options. Reject rather than ignore them.
-    if (url.search || request.body !== null) {
-      await request.body?.cancel();
+    let hasBody = false;
+    if (request.body) {
+      const reader = request.body.getReader();
+      try {
+        hasBody = !(await reader.read()).done;
+      } finally {
+        await reader.cancel();
+        reader.releaseLock();
+      }
+    }
+    if (url.search || hasBody) {
       return reply(400, { error: "REQUEST_OPTIONS_NOT_ALLOWED" });
     }
     try {

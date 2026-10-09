@@ -7,6 +7,7 @@ import { ReviewRunStore } from "./run-store";
 import { GitHubReviewClient } from "./github-client";
 import { createGitHubOidcVerifier } from "./github-oidc";
 import { createReviewHttpHandler } from "./http-handler";
+import { startReviewServer } from "./server";
 const policy = {
   audience: "pilot",
   repository: "usecorn/pilot",
@@ -140,5 +141,30 @@ describe("review HTTP admission", () => {
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("secret");
     expect(store.pendingPublication()).toEqual([]);
+  });
+});
+
+describe("real HTTP listener", () => {
+  it("accepts an empty signed POST and rejects injected options over TCP", async () => {
+    const { handle } = setup();
+    const tick = vi.fn().mockResolvedValue(undefined);
+    const server = await startReviewServer(handle, tick, { port: 0, hostname: "127.0.0.1" });
+    try {
+      const headers = { authorization: `Bearer ${await token()}` };
+      const response = await fetch(`${server.url}/reviews`, { method: "POST", headers });
+      expect(response.status).toBe(202);
+      const run = await response.json();
+      expect(store.get(run.id)?.state).toBe("queued");
+      const invalid = await fetch(`${server.url}/reviews`, {
+        method: "POST",
+        headers,
+        body: '{"verdict":"CLEAN"}',
+      });
+      expect(invalid.status).toBe(400);
+      expect((await fetch(`${server.url}/healthz`)).status).toBe(200);
+    } finally {
+      await server.close();
+    }
+    expect(tick).toHaveBeenCalled();
   });
 });

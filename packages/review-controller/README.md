@@ -60,3 +60,28 @@ npm run typecheck -w @open-inspect/review-controller
 
 Tests use signed synthetic JWTs and real disposable SQLite files. They do not establish real GitHub
 ruleset enforcement, provider execution or cloud access.
+
+## Run the controller
+
+Use Node 24. Run `npm run build -w @open-inspect/review-controller`, then
+`npm start -w @open-inspect/review-controller`. Configure these environment variables:
+
+| Variable                                      | Value                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `REVIEW_REPOSITORY`                           | Pilot fixture repository as owner/name                              |
+| `REVIEW_REPOSITORY_ID`, `REVIEW_OWNER_ID`     | GitHub numeric IDs                                                  |
+| `REVIEW_OIDC_AUDIENCE`                        | Controller audience URL, also used by Actions                       |
+| `REVIEW_WORKFLOW_PATH`                        | Allowed `.github/workflows/*.yml` path                              |
+| `REVIEW_POLICY_DIGEST`, `REVIEW_MODEL_DIGEST` | Server-owned SHA-256 configuration digests                          |
+| `REVIEW_APP_ID`, `REVIEW_INSTALLATION_ID`     | Dedicated pilot App and installation IDs                            |
+| `REVIEW_APP_KEY_FILE`                         | Absolute PKCS#8 PEM path; file must have no group/other permissions |
+| `REVIEW_DATABASE_PATH`                        | Absolute SQLite path in a private directory                         |
+| `REVIEW_HOSTNAME`                             | Default `127.0.0.1`; `0.0.0.0` for an isolated container network    |
+| `REVIEW_PORT`                                 | Default 8788                                                        |
+| `REVIEW_TIMEOUT_MS`                           | Default 10800000, maximum three hours                               |
+
+Run one controller process against the database. Put the service behind the pilot TLS proxy; do not
+publish its plaintext port. `/healthz` indicates process liveness, not provider access or reviewer
+readiness. The scheduler runs every five seconds, shares an active tick and drains it on shutdown.
+Logs contain static operational codes, not credentials or provider responses. The App key belongs
+only in this container's secret mount.

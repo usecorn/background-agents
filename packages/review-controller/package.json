@@ -9,15 +9,19 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "build": "esbuild src/main.ts --bundle --format=esm --platform=node --target=node24 --external:node:* --outfile=dist/main.js",
+    "start": "node dist/main.js"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.4",
     "@open-inspect/shared": "file:../shared",
     "jose": "^6.2.12",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"
   }
