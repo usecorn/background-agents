@@ -99,6 +99,14 @@ export interface ManagedReviewSandboxConfig {
   correlation?: CreateSandboxConfig["correlation"];
 }
 
+export interface ManagedReviewRestoreConfig extends Omit<
+  ManagedReviewSandboxConfig,
+  "trustedBundle"
+> {
+  /** Retained snapshot of this managed session, never the generic base image. */
+  snapshotImageId: string;
+}
+
 export const MANAGED_REVIEW_UPLOAD_ROOT = "/tmp/openinspect-managed-review";
 
 export class VercelSandboxProvider implements SandboxProvider {
@@ -221,6 +229,19 @@ export class VercelSandboxProvider implements SandboxProvider {
   async createManagedReviewSandbox(
     config: ManagedReviewSandboxConfig
   ): Promise<CreateSandboxResult> {
+    return this.launchManagedReview(config, { trustedBundle: config.trustedBundle });
+  }
+
+  async restoreManagedReviewSandbox(
+    config: ManagedReviewRestoreConfig
+  ): Promise<CreateSandboxResult> {
+    return this.launchManagedReview(config, { snapshotImageId: config.snapshotImageId });
+  }
+
+  private async launchManagedReview(
+    config: Omit<ManagedReviewSandboxConfig, "trustedBundle">,
+    source: { trustedBundle: Uint8Array } | { snapshotImageId: string }
+  ): Promise<CreateSandboxResult> {
     if (
       !config.sessionId ||
       !config.sandboxId ||
@@ -231,15 +252,21 @@ export class VercelSandboxProvider implements SandboxProvider {
       !Number.isInteger(config.timeoutSeconds) ||
       config.timeoutSeconds <= 0 ||
       config.timeoutSeconds * 1000 > this.maxSandboxTimeoutMs ||
-      config.trustedBundle.byteLength === 0 ||
-      config.trustedBundle.byteLength > 16 * 1024 * 1024
+      ("trustedBundle" in source &&
+        (source.trustedBundle.byteLength === 0 ||
+          source.trustedBundle.byteLength > 16 * 1024 * 1024)) ||
+      ("snapshotImageId" in source && !source.snapshotImageId)
     ) {
       throw new Error("INVALID_MANAGED_REVIEW_LAUNCH");
     }
-    const sourceSnapshotId = await this.resolveBaseSnapshotId(config.correlation);
+    const sourceSnapshotId =
+      "snapshotImageId" in source
+        ? source.snapshotImageId
+        : await this.resolveBaseSnapshotId(config.correlation);
     if (!sourceSnapshotId) throw new Error("MANAGED_REVIEW_BASE_IMAGE_REQUIRED");
-    const env = {
+    const env: Record<string, string> = {
       ...this.buildPlatformEnvVars(),
+      ...("snapshotImageId" in source ? { RESTORED_FROM_SNAPSHOT: "true" } : {}),
       SANDBOX_ID: config.sandboxId,
       CONTROL_PLANE_URL: config.controlPlaneUrl,
       SANDBOX_AUTH_TOKEN: config.sandboxAuthToken,
@@ -268,34 +295,38 @@ export class VercelSandboxProvider implements SandboxProvider {
     );
     const sessionId = created.session.id;
     try {
-      const prepared = await this.client.runCommandAndWait(
-        {
-          sessionId,
-          command: VERCEL_PYTHON_BIN,
-          args: ["-c", "import os; os.mkdir('/tmp/openinspect-managed-review', 0o700)"],
-          timeoutMs: 30_000,
-        },
-        config.correlation
-      );
-      if (prepared.exitCode !== 0) throw new Error("MANAGED_REVIEW_UPLOAD_PREPARATION_FAILED");
-      await this.client.writeFileArchive(
-        { sessionId, archive: config.trustedBundle, extractDir: MANAGED_REVIEW_UPLOAD_ROOT },
-        config.correlation
-      );
-      const secured = await this.client.runCommandAndWait(
-        {
-          sessionId,
-          command: "sudo",
-          args: [
-            VERCEL_PYTHON_BIN,
-            "-c",
-            "import os; os.chown('/tmp/openinspect-managed-review', 0, 0); os.chmod('/tmp/openinspect-managed-review', 0o700); os.chown('/tmp/openinspect-managed-review/launch.json', 0, 0); os.chmod('/tmp/openinspect-managed-review/launch.json', 0o600)",
-          ],
-          timeoutMs: 30_000,
-        },
-        config.correlation
-      );
-      if (secured.exitCode !== 0) throw new Error("MANAGED_REVIEW_CONTEXT_PREPARATION_FAILED");
+      if ("trustedBundle" in source) {
+        const prepared = await this.client.runCommandAndWait(
+          {
+            sessionId,
+            command: VERCEL_PYTHON_BIN,
+            args: ["-c", "import os; os.mkdir('/tmp/openinspect-managed-review', 0o700)"],
+            timeoutMs: 30_000,
+          },
+          config.correlation
+        );
+        if (prepared.exitCode !== 0) throw new Error("MANAGED_REVIEW_UPLOAD_PREPARATION_FAILED");
+        await this.client.writeFileArchive(
+          { sessionId, archive: source.trustedBundle, extractDir: MANAGED_REVIEW_UPLOAD_ROOT },
+          config.correlation
+        );
+        const secured = await this.client.runCommandAndWait(
+          {
+            sessionId,
+            command: "sudo",
+            args: [
+              VERCEL_PYTHON_BIN,
+              "-c",
+              "import os; os.chown('/tmp/openinspect-managed-review', 0, 0); os.chmod('/tmp/openinspect-managed-review', 0o700); os.chown('/tmp/openinspect-managed-review/launch.json', 0, 0); os.chmod('/tmp/openinspect-managed-review/launch.json', 0o600)",
+            ],
+            timeoutMs: 30_000,
+          },
+          config.correlation
+        );
+        if (secured.exitCode !== 0) throw new Error("MANAGED_REVIEW_CONTEXT_PREPARATION_FAILED");
+      }
+      // Restore must consume the retained private context and source unchanged.
+      // The managed runtime verifies both and requires the saved OpenCode session.
       const launched = await this.client.startCommand(
         {
           sessionId,

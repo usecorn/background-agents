@@ -1023,6 +1023,74 @@ describe("VercelSandboxProvider", () => {
 });
 
 describe("managed review launch", () => {
+  it("restores retained managed state without uploading source or using the ordinary entrypoint", async () => {
+    const client = createMockClient();
+    client.writeFileArchive = vi.fn(async () => {});
+    const provider = new VercelSandboxProvider(client, providerConfig);
+    const result = await provider.restoreManagedReviewSandbox({
+      sessionId: "session-123",
+      sandboxId: "review-restored",
+      controlPlaneUrl: "https://control-plane.test",
+      sandboxAuthToken: "rotated-bridge-token",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      providerApiKey: "synthetic-key",
+      snapshotImageId: "snapshot-retained-review",
+      timeoutSeconds: 1800,
+    });
+    expect(result.providerObjectId).toBe("vercel-session-1");
+    const request = vi.mocked(client.createSandbox).mock.calls[0][0];
+    expect(request.sourceSnapshotId).toBe("snapshot-retained-review");
+    expect(request.ports).toEqual([]);
+    expect(request.env?.RESTORED_FROM_SNAPSHOT).toBe("true");
+    expect(request.env?.SANDBOX_AUTH_TOKEN).toBe("rotated-bridge-token");
+    expect(request.env?.GITHUB_TOKEN).toBeUndefined();
+    expect(client.writeFileArchive).not.toHaveBeenCalled();
+    expect(client.runCommandAndWait).not.toHaveBeenCalled();
+    const launch = vi.mocked(client.startCommand).mock.calls[0][0];
+    expect(launch.args).toContain("--managed-review-context");
+    expect(launch.env?.RESTORED_FROM_SNAPSHOT).toBe("true");
+  });
+  it("does not replace a missing managed snapshot with the base image", async () => {
+    const client = createMockClient();
+    vi.mocked(client.createSandbox).mockRejectedValue(new Error("snapshot unavailable"));
+    const provider = new VercelSandboxProvider(client, providerConfig);
+    await expect(
+      provider.restoreManagedReviewSandbox({
+        sessionId: "session-123",
+        sandboxId: "review-restored",
+        controlPlaneUrl: "https://control-plane.test",
+        sandboxAuthToken: "rotated-bridge-token",
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        providerApiKey: "synthetic-key",
+        snapshotImageId: "snapshot-missing",
+        timeoutSeconds: 1800,
+      })
+    ).rejects.toThrow();
+    expect(client.createSandbox).toHaveBeenCalledOnce();
+    expect(client.startCommand).not.toHaveBeenCalled();
+  });
+  it("stops restored compute if strict managed startup exits immediately", async () => {
+    const client = createMockClient();
+    vi.mocked(client.startCommand).mockResolvedValue({ commandId: "failed-start", exitCode: 1 });
+    const provider = new VercelSandboxProvider(client, providerConfig);
+    await expect(
+      provider.restoreManagedReviewSandbox({
+        sessionId: "session-123",
+        sandboxId: "review-restored",
+        controlPlaneUrl: "https://control-plane.test",
+        sandboxAuthToken: "rotated-bridge-token",
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        providerApiKey: "synthetic-key",
+        snapshotImageId: "snapshot-retained-review",
+        timeoutSeconds: 1800,
+      })
+    ).rejects.toThrow();
+    expect(client.stopSession).toHaveBeenCalledOnce();
+    expect(client.createSandbox).toHaveBeenCalledOnce();
+  });
   it("uses only explicit review inputs and starts the managed runtime without ports", async () => {
     const client = createMockClient();
     const write = vi.fn(async () => {});
