@@ -13,12 +13,18 @@ describe("readEnvConfig", () => {
   it("takes every EnvConfig field from the source and nothing else", () => {
     const config = readEnvConfig({
       ...REQUIRED,
+      MANAGED_REVIEW_OWNER_USER_ID: "pilot-owner",
       LOG_LEVEL: "debug",
       SANDBOX_PROVIDER: "e2b",
       PATH: "/usr/bin",
       DATA_DIR: "/var/lib/oi",
     });
-    expect(config).toEqual({ ...REQUIRED, LOG_LEVEL: "debug", SANDBOX_PROVIDER: "e2b" });
+    expect(config).toEqual({
+      ...REQUIRED,
+      MANAGED_REVIEW_OWNER_USER_ID: "pilot-owner",
+      LOG_LEVEL: "debug",
+      SANDBOX_PROVIDER: "e2b",
+    });
   });
 
   it("treats an empty variable as unset", () => {

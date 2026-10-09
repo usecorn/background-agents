@@ -18,6 +18,7 @@ import { createLogger } from "../logger";
 import type { Pinned } from "./pinned";
 import type { SessionSkillManifestInput } from "./skill-resolution";
 import type { SessionModelProviderAuthInput } from "../model-provider-accounts/provider-auth-contracts";
+import { HttpError } from "../http/responses";
 import { DEFAULT_BASE_BRANCH } from "../repos/default-branch";
 import { resolveSandboxBackendName } from "../sandbox/provider-name";
 
@@ -176,41 +177,67 @@ export async function initializeSession(
   if (input.visibility === "private" && !input.platformUserId) {
     throw new Error("Private sessions require a canonical owner");
   }
-  await sessionStore.create({
-    id: input.sessionId,
-    title: input.title || null,
-    repoOwner: input.repoOwner,
-    repoName: input.repoName,
-    harness: input.harness,
-    model: input.model,
-    reasoningEffort: input.reasoningEffort,
-    baseBranch,
-    repositories,
-    environmentId: input.environmentId ?? null,
-    status: "created",
-    parentSessionId: input.parentSessionId,
-    spawnSource: input.spawnSource,
-    spawnDepth: input.spawnDepth,
-    automationId: input.automationId,
-    automationRunId: input.automationRunId,
-    scmLogin: input.scmLogin || null,
-    userId: input.platformUserId,
-    ownerTeamId: input.ownerTeamId,
-    visibility: input.visibility,
-    collaboratorSourceSessionId: input.collaboratorSourceSessionId,
-    privateCreationActor:
-      input.visibility === "private" && input.platformUserId
-        ? {
-            requestId: ctx.request_id,
-            actorUserId: input.platformUserId,
-          }
-        : undefined,
-    createdAt: now,
-    updatedAt: now,
-    memory: input.memory,
-    managedSkills: input.managedSkills,
-    providerAuth: input.providerAuth,
-  });
+  const createIndex = () =>
+    sessionStore.create({
+      id: input.sessionId,
+      title: input.title || null,
+      repoOwner: input.repoOwner,
+      repoName: input.repoName,
+      harness: input.harness,
+      model: input.model,
+      reasoningEffort: input.reasoningEffort,
+      baseBranch,
+      repositories,
+      environmentId: input.environmentId ?? null,
+      status: "created",
+      parentSessionId: input.parentSessionId,
+      spawnSource: input.spawnSource,
+      spawnDepth: input.spawnDepth,
+      automationId: input.automationId,
+      automationRunId: input.automationRunId,
+      scmLogin: input.scmLogin || null,
+      userId: input.platformUserId,
+      ownerTeamId: input.ownerTeamId,
+      visibility: input.visibility,
+      collaboratorSourceSessionId: input.collaboratorSourceSessionId,
+      privateCreationActor:
+        input.visibility === "private" && input.platformUserId
+          ? {
+              requestId: ctx.request_id,
+              actorUserId: input.platformUserId,
+            }
+          : undefined,
+      createdAt: now,
+      updatedAt: now,
+      memory: input.memory,
+      managedSkills: input.managedSkills,
+      providerAuth: input.providerAuth,
+    });
+
+  try {
+    await createIndex();
+  } catch (creationError) {
+    // Only controller-derived review IDs may resume a partially initialized index.
+    // Runtime init below still verifies the exact immutable prompt/run binding.
+    if (!input.managedReview || input.sessionId !== `managed-review-${input.managedReview.runId}`) {
+      throw creationError;
+    }
+    const existing = await sessionStore.get(input.sessionId);
+    if (!existing) throw creationError;
+    if (
+      existing.userId !== input.platformUserId ||
+      existing.visibility !== "private" ||
+      existing.ownerTeamId !== null ||
+      existing.repoOwner !== null ||
+      existing.repoName !== null ||
+      existing.environmentId != null ||
+      existing.parentSessionId != null ||
+      existing.model !== input.model ||
+      existing.harness !== input.harness ||
+      existing.reasoningEffort !== input.reasoningEffort
+    )
+      throw new HttpError("MANAGED_REVIEW_INITIALIZATION_CONFLICT", 409);
+  }
 
   // Step 2: runtime init
   let initResponse: Response;
@@ -251,12 +278,19 @@ export async function initializeSession(
       }
     );
   } catch (transportError) {
-    await markSessionFailed(sessionStore, input.sessionId, ctx.trace_id);
+    if (!input.managedReview) await markSessionFailed(sessionStore, input.sessionId, ctx.trace_id);
     throw transportError;
   }
 
   if (!initResponse.ok) {
-    await markSessionFailed(sessionStore, input.sessionId, ctx.trace_id);
+    if (!input.managedReview) await markSessionFailed(sessionStore, input.sessionId, ctx.trace_id);
+    if (input.managedReview) {
+      await initResponse.body?.cancel();
+      throw new HttpError(
+        "MANAGED_REVIEW_INITIALIZATION_FAILED",
+        initResponse.status === 409 ? 409 : 503
+      );
+    }
     const errorText = await initResponse.text().catch(() => "unknown");
     logger.error("DO init failed", {
       session_id: input.sessionId,

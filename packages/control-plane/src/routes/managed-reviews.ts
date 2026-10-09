@@ -1,3 +1,4 @@
+import { createManagedReview } from "../session/create-managed-review";
 import { Hono } from "hono";
 import { admit } from "../routing/admit";
 import type { ControlPlaneHonoEnv } from "../routing/hono-env";
@@ -39,4 +40,8 @@ managedReviewRoutes.post("/managed-reviews/:id/launch", controller, (c) =>
       signal: request.signal,
     })
   )
+);
+
+managedReviewRoutes.post("/managed-reviews", controller, (c) =>
+  dispatchSession(c, (request, env, _params, ctx) => createManagedReview(request, env, ctx))
 );

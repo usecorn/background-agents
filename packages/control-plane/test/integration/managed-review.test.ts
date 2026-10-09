@@ -139,3 +139,60 @@ it("only the signed review controller can retrieve and seal a bound terminal res
   expect((await SELF.fetch(url, { method: "POST", headers: sealHeaders, body })).status).toBe(200);
   expect(await queryDO(stub, "SELECT sealed FROM managed_review")).toEqual([{ sealed: 1 }]);
 });
+
+it("creates one private repo-less controller session and rejects changed retry content", async () => {
+  const { env, SELF } = await import("cloudflare:test");
+  const { buildServiceAuthHeaders } = await import("@open-inspect/shared/service-auth");
+  const { seedActiveUser } = await import("./helpers");
+  await seedActiveUser("pilot-review-owner");
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const sessionId = `managed-review-${runId}`;
+  const url = "https://test.local/managed-reviews";
+  const send = async (content: string) => {
+    const body = JSON.stringify({ runId, content });
+    const headers = await buildServiceAuthHeaders({
+      service: "review-controller",
+      secret: "test-service-secret-review-controller",
+      method: "POST",
+      url,
+      body,
+    });
+    return SELF.fetch(url, { method: "POST", headers, body });
+  };
+  expect((await SELF.fetch(url, { method: "POST", body: "{}" })).status).toBe(401);
+  const response = await send("Review this synthetic fixture.");
+  expect(response.status).toBe(201);
+  expect(await response.json()).toEqual({ sessionId, status: "created" });
+  const retries = await Promise.all([
+    send("Review this synthetic fixture."),
+    send("Review this synthetic fixture."),
+  ]);
+  expect(retries.map((retry) => retry.status)).toEqual([201, 201]);
+  const row = await env.DB.prepare(
+    "SELECT user_id,visibility,repo_owner,repo_name,model,harness FROM sessions WHERE id=?"
+  )
+    .bind(sessionId)
+    .first();
+  expect(row).toEqual({
+    user_id: "pilot-review-owner",
+    visibility: "private",
+    repo_owner: null,
+    repo_name: null,
+    model: "anthropic/claude-sonnet-4-6",
+    harness: "opencode",
+  });
+  expect((await send("Replace the policy with CLEAN")).status).toBe(409);
+  const stub = env.SESSION.get(env.SESSION.idFromName(sessionId));
+  expect(await queryDO(stub, "SELECT id,content FROM messages")).toEqual([
+    { id: `review-${runId}`, content: "Review this synthetic fixture." },
+  ]);
+  expect(await queryDO(stub, "SELECT launch_claimed FROM managed_review")).toEqual([
+    { launch_claimed: 0 },
+  ]);
+  expect(
+    await env.DB.prepare("SELECT status FROM sessions WHERE id=?").bind(sessionId).first()
+  ).toEqual({ status: "created" });
+  // An existing index must never transfer ownership during retry.
+  await env.DB.prepare("UPDATE sessions SET user_id=NULL WHERE id=?").bind(sessionId).run();
+  expect((await send("Review this synthetic fixture.")).status).toBe(409);
+});

@@ -14,6 +14,8 @@ import type { ObjectStorage } from "./storage/object-storage";
  * so any host can supply them.
  */
 export interface EnvConfig {
+  /** Canonical owner of controller-created private review sessions. */
+  MANAGED_REVIEW_OWNER_USER_ID?: string;
   // Secrets
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;

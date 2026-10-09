@@ -161,6 +161,7 @@ export default defineConfig({
           },
           queueProducers: ["IMAGE_BUILD_FINALIZATION_QUEUE"],
           bindings: {
+            MANAGED_REVIEW_OWNER_USER_ID: "pilot-review-owner",
             IMAGE_CALLBACK_TOKEN_PEPPER: "test-callback-pepper",
             SERVICE_AUTH_SECRET_WEB: "test-service-secret-web",
             SERVICE_AUTH_SECRET_SLACK_BOT: "test-service-secret-slack-bot",

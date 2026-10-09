@@ -2,8 +2,8 @@
 
 This branch is an implementation checkpoint for review, not a deployable malicious-code gate. The
 controller accepts review requests, retrieves/seals existing OpenInspect results, and manages GitHub
-checks, but the controller does not yet create sessions or request managed Vercel execution. Do not
-enable a required check against this implementation yet.
+checks, but the controller scheduler does not yet call the managed creation and launch endpoints. Do
+not enable a required check against this implementation yet.
 
 ## Source and infrastructure
 
@@ -23,9 +23,10 @@ superseded by this handoff and DevOps.
   locks, and dedicated Vercel managed-review creation/restore methods. Managed restore uses the
   retained context without uploading replacement source or falling back to a base image. These
   creation method now has a controller-only lifecycle launch endpoint with a durable launch claim.
-  Session creation, controller scheduling and managed continuation still need wiring. See
-  `docs/CONTROL_PLANE_CONTAINER.md` for existing packaging. Application deployment needs separate
-  persistent control-plane/controller directories using the host ownership from Terraform.
+  Private managed session creation is available through the controller-only API. Controller
+  scheduling and managed continuation still need wiring. See `docs/CONTROL_PLANE_CONTAINER.md` for
+  existing packaging. Application deployment needs separate persistent control-plane/controller
+  directories using the host ownership from Terraform.
 - `packages/sandbox-runtime`: explicit managed launch, hash-verified source staging, constrained
   OpenCode configuration, read-only/network-isolated MCP tools, and strict conversation recovery.
 - `packages/review-controller/src/source-bundle.ts`: creates a regular-file tar from validated text
@@ -86,10 +87,17 @@ caller-selected repository directory can load a hostile plugin despite config fl
 launch uses trusted cwd and bridge requests without caller-selected directory headers. Do not add an
 unrestricted proxy.
 
-## Managed terminal API
+## Managed review API
+
+The control plane requires `MANAGED_REVIEW_OWNER_USER_ID` to name an existing canonical user for
+creation. Configure the verified pilot operator's user ID after sign-in; callers cannot supply a
+user, team, repository, model or credential selection. Created sessions are private, repo-less,
+OpenCode with Anthropic Sonnet 4.6, with no selected memory or managed skills. The run UUID derives
+both session and message IDs. Repeated creation preserves the existing owner and exact prompt.
 
 The `review-controller` service principal alone can call:
 
+- `POST /managed-reviews` with JSON `{runId, content}` to initialize the bound session.
 - `POST /managed-reviews/:sessionId/launch` with JSON `{runId, messageId, bundleBase64}`. The bundle
   must be controller-built. A persistent claim prevents duplicate model starts; an ambiguous or
   failed launch requires investigation or a new review attempt.
