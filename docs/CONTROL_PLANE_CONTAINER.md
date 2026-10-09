@@ -195,6 +195,19 @@ network, so `APP_BIND_ADDRESS` stays on loopback and the plaintext port is never
 outside. `WORKER_URL` is then `https://<CADDY_DOMAIN>` and the web app's `NEXT_PUBLIC_WS_URL` is
 `wss://<CADDY_DOMAIN>`.
 
+## Native GCS storage
+
+For a GCP Node host, set `OBJECT_STORE_PROVIDER=gcs` and `OBJECT_STORE_BUCKET`
+to the pilot's private media bucket. The adapter uses Application Default
+Credentials, including an attached VM service account; no S3 HMAC key is needed.
+It preserves whole-object size for range responses and pins reads to the metadata's
+object generation. S3 remains the default for existing deployments.
+
+GCS media storage is not a database backup or application-layer encryption policy.
+Whole-volume recovery and sensitive-content encryption must be configured separately.
+Do not run the local object-store/Litestream compose services against GCS: the
+pilot uses its own packaging and whole-deployment backup procedure.
+
 ## Configuration on AWS
 
 On AWS the container reads the same `.env` variables from its environment. The deploy step

@@ -7,7 +7,8 @@ import {
   NODE_HOST_VARIABLE_NAMES,
   REQUIRED_ENV_CONFIG_KEY_NAMES,
 } from "./config";
-import { AWS_CREDENTIAL_VARIABLE_NAMES, OBJECT_STORAGE_VARIABLE_NAMES } from "./s3-object-storage";
+import { AWS_CREDENTIAL_VARIABLE_NAMES } from "./s3-object-storage";
+import { NODE_OBJECT_STORAGE_VARIABLE_NAMES } from "./object-storage";
 
 /** The repository's `.env.example`, the documented configuration of a Node host. */
 const ENV_EXAMPLE_PATH = resolve(
@@ -120,7 +121,7 @@ describe(".env.example", () => {
     const expected = [
       ...ENV_CONFIG_KEY_NAMES,
       ...NODE_HOST_VARIABLE_NAMES,
-      ...OBJECT_STORAGE_VARIABLE_NAMES,
+      ...NODE_OBJECT_STORAGE_VARIABLE_NAMES,
       ...AWS_CREDENTIAL_VARIABLE_NAMES,
       ...COMPOSE_VARIABLES,
     ];
