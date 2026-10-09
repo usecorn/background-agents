@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readSourceComparison } from "./source-comparison";
 import type { ReviewRun } from "./run-store";
 
 const sha = z.string().regex(/^[a-f0-9]{40}$/);
@@ -25,6 +26,10 @@ export class GitHubReviewClient {
     const metadata = await this.api(`/pulls/${pr}`);
     const main = z.object({ sha }).parse(await this.api("/commits/main"));
     return { metadata, mainSha: main.sha };
+  }
+
+  async readSourceComparison(baseSha: string, headSha: string) {
+    return readSourceComparison(baseSha, headSha, (path) => this.api(path));
   }
 
   /** Recover a possibly accepted POST by its immutable attempt identity. */
