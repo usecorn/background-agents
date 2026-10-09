@@ -184,6 +184,17 @@ export const sandboxEventSchema = z.discriminatedUnion("type", [
   messageSandboxEventBaseSchema.extend({
     type: z.literal("execution_complete"),
     success: z.boolean(),
+    /** Trusted harness snapshot of the final assistant message, never a checkout file. */
+    finalResponse: z
+      .object({
+        assistantMessageId: z.string().min(1).max(256),
+        parentMessageId: z.string().min(1).max(256),
+        text: z
+          .string()
+          .min(1)
+          .max(1024 * 1024),
+      })
+      .optional(),
     error: z.string().optional(),
     /** Final cumulative reported cost of the turn. */
     messageCostUsd: z.number().nonnegative().optional(),

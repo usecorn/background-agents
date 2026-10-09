@@ -21,6 +21,7 @@ from ..child_activity import (
 )
 from ..message_attribution import AssistantMessageDisposition, MessageAttribution
 from ..opencode_identifier import OpenCodeIdentifier
+from ..review_response import terminal_response
 from .opencode_client import (
     SSEConnectionError,
     SSEInactivityTimeoutError,
@@ -78,6 +79,7 @@ class _PromptState:
     # session.compacted. If still set at idle with no error emitted, the
     # promised compaction never happened and the prompt must fail.
     pending_overflow_error: str | None = None
+    final_response: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         self.attribution = MessageAttribution(
@@ -242,6 +244,8 @@ class OpenCodePromptStream:
                     if step.disposition is _Disposition.FINISHED_IDLE:
                         async for final_event in self._fetch_final_message_state(state):
                             yield final_event
+                        if state.final_response is not None:
+                            yield {"type": "_terminal_response", "response": state.final_response}
                         return
                     if step.disposition is _Disposition.FAILED:
                         return
@@ -951,6 +955,7 @@ class OpenCodePromptStream:
             if messages is None:
                 return
 
+            state.final_response = terminal_response(messages, state.opencode_message_id)
             for msg in messages:
                 info = msg.get("info", {})
                 role = info.get("role", "")

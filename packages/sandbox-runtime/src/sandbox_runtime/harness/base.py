@@ -87,6 +87,7 @@ class TurnOutcome:
     error: str | None = None
     cancelled: bool = False
     message_cost_usd: float | None = None
+    final_response: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if self.cancelled and self.success:
@@ -95,8 +96,10 @@ class TurnOutcome:
             raise ValueError("a failed turn must carry an error message")
 
     @classmethod
-    def ok(cls, *, message_cost_usd: float | None = None) -> TurnOutcome:
-        return cls(success=True, message_cost_usd=message_cost_usd)
+    def ok(
+        cls, *, message_cost_usd: float | None = None, final_response: dict[str, str] | None = None
+    ) -> TurnOutcome:
+        return cls(success=True, message_cost_usd=message_cost_usd, final_response=final_response)
 
     @classmethod
     def failed(cls, error: str, *, message_cost_usd: float | None = None) -> TurnOutcome:

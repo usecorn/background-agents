@@ -215,3 +215,28 @@ async def test_required_resume_preserves_valid_conversation(tmp_path):
     await bridge._load_session_id()
     assert harness.session_id == "saved"
     assert bridge.session_id_file.read_text() == "saved"
+
+
+async def test_successful_terminal_carries_harness_response_binding(tmp_path):
+    response = {"assistantMessageId": "assistant", "parentMessageId": "vendor-prompt", "text": "{}"}
+
+    class FinalHarness(ScriptedHarness):
+        async def run_prompt(self, prompt, emit):
+            await emit({"type": "token", "messageId": prompt.message_id, "content": "{}"})
+            return TurnOutcome.ok(final_response=response)
+
+    bridge = _bridge(FinalHarness(session_id="saved"))
+    bridge._configure_git_identity = AsyncMock()
+    bridge._send_event = AsyncMock(return_value=True)
+    bridge.session_id_file = tmp_path / "agent-session-id"
+    bridge.legacy_session_id_file = tmp_path / "legacy"
+    event = await bridge._handle_prompt(
+        {
+            "type": "prompt",
+            "messageId": "prompt",
+            "content": "review",
+            "author": {"userId": "controller", "gitIdentity": {"mode": "agent-only"}},
+        }
+    )
+    assert event["success"] is True, event
+    assert event["finalResponse"] == response

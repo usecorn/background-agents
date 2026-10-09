@@ -875,6 +875,11 @@ class AgentBridge:
             "type": "execution_complete",
             "messageId": message_id,
             "success": not had_error,
+            **(
+                {"finalResponse": turn.final_response}
+                if not had_error and turn.final_response is not None
+                else {}
+            ),
             **({"error": error_message} if error_message else {}),
             **({"messageCostUsd": message_cost_usd} if message_cost_usd is not None else {}),
         }

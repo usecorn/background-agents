@@ -110,8 +110,12 @@ class OpencodeHarness:
     async def run_prompt(self, prompt: HarnessPrompt, emit: EventSink) -> TurnOutcome:
         error_message: str | None = None
         message_cost_usd: float | None = None
+        final_response: dict[str, str] | None = None
         try:
             async for event in self.stream_events(prompt):
+                if event.get("type") == "_terminal_response":
+                    final_response = event["response"]
+                    continue
                 if event.get("type") == "error":
                     error_message = str(event.get("error") or "Unknown error")
                 if event.get("type") == "step_finish" and "messageCostUsd" in event:
@@ -124,7 +128,7 @@ class OpencodeHarness:
             return TurnOutcome.failed(str(error), message_cost_usd=message_cost_usd)
         if error_message is not None:
             return TurnOutcome.failed(error_message, message_cost_usd=message_cost_usd)
-        return TurnOutcome.ok(message_cost_usd=message_cost_usd)
+        return TurnOutcome.ok(message_cost_usd=message_cost_usd, final_response=final_response)
 
     async def abort(self) -> bool:
         if not self.session_id:

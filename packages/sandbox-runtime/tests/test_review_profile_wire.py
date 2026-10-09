@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from sandbox_runtime.review_profile import ReviewProfile
+from sandbox_runtime.review_response import terminal_response
 from tests.test_opencode_reasoning_contract import CATALOG, anthropic_events
 
 BINARY = os.environ.get("OPENCODE_TEST_BINARY")
@@ -147,6 +148,11 @@ def test_hostile_configuration_cannot_change_review_tools(tmp_path, monkeypatch,
             {"parts": [{"type": "text", "text": "Inspect the assigned source."}]},
         )
         assert not result["info"].get("error"), result
+        terminal = terminal_response(
+            call(f"/session/{session}/message"), result["info"]["parentID"]
+        )
+        assert terminal is not None
+        assert terminal["assistantMessageId"] == result["info"]["id"]
         requests = [item for item in captured if item.get("tools")]
         assert requests, "Review did not reach provider"
         for request in requests:
