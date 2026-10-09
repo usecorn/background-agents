@@ -63,7 +63,7 @@ export class ReviewRunStore {
     chmodSync(path, 0o600);
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
     const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
-    if (version !== 0 && version !== 1 && version !== 2) {
+    if (version !== 0 && version !== 1 && version !== 2 && version !== 3) {
       this.db.close();
       throw new Error("Unsupported review store schema version");
     }
@@ -85,8 +85,17 @@ export class ReviewRunStore {
       CREATE TABLE IF NOT EXISTS check_creation_intents (
         runId TEXT PRIMARY KEY REFERENCES review_runs(id)
       );
-      PRAGMA user_version=2;
+      CREATE TABLE IF NOT EXISTS execution_launches (
+        runId TEXT PRIMARY KEY REFERENCES review_runs(id)
+      );
     `);
+    this.transaction(() => {
+      // Pre-scheduler running sessions may already have executed. Never replay them.
+      if (version !== 3)
+        this.db.exec(`INSERT OR IGNORE INTO execution_launches(runId)
+        SELECT id FROM review_runs WHERE state!='queued'`);
+      this.db.exec("PRAGMA user_version=3");
+    });
   }
 
   start(binding: ReviewBinding, now: number, timeoutMs: number, options?: { rerun?: boolean }) {
@@ -210,6 +219,27 @@ export class ReviewRunStore {
       )
       .all()
       .map((row) => decode(row as unknown as Row));
+  }
+
+  pendingExecution(): ReviewRun[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM review_runs WHERE state IN ('queued','running')
+      AND ${CURRENT} AND id NOT IN (SELECT runId FROM execution_launches)`
+      )
+      .all()
+      .map((row) => decode(row as unknown as Row));
+  }
+
+  acknowledgeLaunch(id: string, sessionId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO execution_launches(runId)
+      SELECT id FROM review_runs WHERE id=? AND sessionId=? AND state='running' AND ${CURRENT}`
+        )
+        .run(id, sessionId).changes === 1
+    );
   }
 
   running(): ReviewRun[] {

@@ -7,6 +7,7 @@ import { createGitHubOidcVerifier } from "./github-oidc";
 import { createReviewHttpHandler } from "./http-handler";
 import { PublicationReconciler } from "./publication-reconciler";
 import { OpenInspectReviewClient } from "./openinspect-client";
+import { ExecutionReconciler } from "./execution-reconciler";
 import { ResultReconciler } from "./result-reconciler";
 import { REVIEW_POLICY_DIGEST, REVIEW_MODEL_DIGEST } from "./review-policy";
 import { ReviewRunStore } from "./run-store";
@@ -70,6 +71,7 @@ async function main() {
   );
   const store = new ReviewRunStore(env.REVIEW_DATABASE_PATH);
   const reconciler = new PublicationReconciler(store, github, policy, env.REVIEW_APP_ID);
+  const executions = new ExecutionReconciler(store, openinspect, github, policy);
   const results = new ResultReconciler(store, openinspect, github);
   const handler = createReviewHttpHandler({
     store,
@@ -81,6 +83,7 @@ async function main() {
   const server = await startReviewServer(
     handler,
     async () => {
+      await executions.tick();
       await results.tick();
       await reconciler.tick();
     },

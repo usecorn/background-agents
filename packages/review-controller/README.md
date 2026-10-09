@@ -30,7 +30,11 @@ Implemented building blocks:
 - `publication-reconciler.ts` serializes publication ticks, expires deadlines, recovers check
   identities, re-reads PR freshness and retries check updates from the persisted outcome. Superseded
   checks are cancelled. It never invokes a model.
-- `openinspect-client.ts` signs terminal retrieval/sealing as the controller, validates attempt
+- `execution-reconciler.ts` acquires immutable source, builds the trusted prompt/bundle, creates a
+  private managed session and requests Vercel launch. Session identity is persisted before launch;
+  lost responses retry the same control-plane allocation claim. Acknowledged launches survive
+  controller restart. Source/creation errors remain non-passing and retry until the deadline.
+- `openinspect-client.ts` signs creation, launch and terminal retrieval/sealing, validates attempt
   identity and response digest, bounds response size, and refuses redirects.
 - `result-reconciler.ts` rebuilds coverage from immutable source commits and validates the terminal
   response, then seals its exact digest before persisting the verdict. Lost seal acknowledgements
@@ -41,9 +45,9 @@ Implemented building blocks:
   attempt. Late/superseded completions cannot overwrite a current verdict. Publication retries
   survive process restart.
 
-The HTTP service, terminal result reconciler and check reconciler are wired. OpenInspect
-managed-review admission, source/policy execution, operator overrides, and the E2E driver still need
-integration. Never treat the validator alone as a trusted GitHub gate.
+The HTTP service and execution, result and check reconcilers are wired. Deployment, real provider
+execution and GitHub E2E still require live proof. Operator overrides and managed continuation are
+not connected. Keep the pilot check optional.
 
 ## Result provenance
 
@@ -104,5 +108,6 @@ and the initial model.
 
 `GitHubReviewClient.readSourceComparison` binds source to full base/head trees and verifies Git blob
 hashes. `buildReviewSourceBundle` creates a private regular-file archive from that source without
-checking out a repository or executing its code; GNU tar is required. These source/policy pieces are
-not yet connected to the execution scheduler.
+checking out a repository or executing its code; GNU tar is required. The execution scheduler uses
+these source/policy pieces before requesting launch. Configure `MANAGED_REVIEW_OWNER_USER_ID` on the
+control plane to an existing verified operator user.

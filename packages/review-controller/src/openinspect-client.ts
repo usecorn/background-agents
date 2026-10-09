@@ -52,6 +52,31 @@ export class OpenInspectReviewClient {
     this.origin = url.origin;
   }
 
+  async create(runId: string, content: string): Promise<string> {
+    z.uuid().parse(runId);
+    const sessionId = `managed-review-${runId}`;
+    const value = await this.requestApi(`${this.origin}/managed-reviews`, { runId, content });
+    if (
+      !z
+        .strictObject({ sessionId: z.literal(sessionId), status: z.literal("created") })
+        .safeParse(value).success
+    ) {
+      throw new Error("INVALID_OPENINSPECT_SESSION");
+    }
+    return sessionId;
+  }
+
+  async launch(sessionId: string, runId: string, bundle: Uint8Array): Promise<void> {
+    const value = await this.api(sessionId, "launch", {
+      runId,
+      messageId: reviewMessageId(runId),
+      bundleBase64: Buffer.from(bundle).toString("base64"),
+    });
+    if (!z.strictObject({ launched: z.boolean() }).safeParse(value).success) {
+      throw new Error("INVALID_OPENINSPECT_LAUNCH");
+    }
+  }
+
   async result(sessionId: string, runId: string) {
     const messageId = reviewMessageId(runId);
     const query = new URLSearchParams({ runId, messageId });
@@ -83,7 +108,10 @@ export class OpenInspectReviewClient {
 
   private async api(sessionId: string, action: string, payload?: unknown): Promise<unknown> {
     id.parse(sessionId);
-    const url = `${this.origin}/managed-reviews/${sessionId}/${action}`;
+    return this.requestApi(`${this.origin}/managed-reviews/${sessionId}/${action}`, payload);
+  }
+
+  private async requestApi(url: string, payload?: unknown): Promise<unknown> {
     const body = payload === undefined ? undefined : JSON.stringify(payload);
     const method = body === undefined ? "GET" : "POST";
     try {

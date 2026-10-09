@@ -2,8 +2,9 @@
 
 This branch is an implementation checkpoint for review, not a deployable malicious-code gate. The
 controller accepts review requests, retrieves/seals existing OpenInspect results, and manages GitHub
-checks, but the controller scheduler does not yet call the managed creation and launch endpoints. Do
-not enable a required check against this implementation yet.
+checks, and now connects admitted runs to managed session creation and launch. Live deployment and
+real GitHub/model execution remain unverified. Do not enable a required check against this
+implementation yet.
 
 ## Source and infrastructure
 
@@ -24,9 +25,9 @@ superseded by this handoff and DevOps.
   retained context without uploading replacement source or falling back to a base image. These
   creation method now has a controller-only lifecycle launch endpoint with a durable launch claim.
   Private managed session creation is available through the controller-only API. Controller
-  scheduling and managed continuation still need wiring. See `docs/CONTROL_PLANE_CONTAINER.md` for
-  existing packaging. Application deployment needs separate persistent control-plane/controller
-  directories using the host ownership from Terraform.
+  scheduling is connected; managed continuation still needs wiring. See
+  `docs/CONTROL_PLANE_CONTAINER.md` for existing packaging. Application deployment needs separate
+  persistent control-plane/controller directories using the host ownership from Terraform.
 - `packages/sandbox-runtime`: explicit managed launch, hash-verified source staging, constrained
   OpenCode configuration, read-only/network-isolated MCP tools, and strict conversation recovery.
 - `packages/review-controller/src/source-bundle.ts`: creates a regular-file tar from validated text
@@ -45,8 +46,9 @@ checks, deployed image proof, Vercel conversation restore, or a real-model accur
 Prior Vercel probes proved individual lifecycle/isolation primitives only.
 
 The controller now requires `REVIEW_CONTROL_PLANE_ORIGIN` and a private `REVIEW_SERVICE_SECRET_FILE`
-containing the controller's own sig1 secret. See its README. The result reconciler reads existing
-bound executions; it does not start them.
+containing the controller's own sig1 secret. See its README. The execution reconciler prepares
+source and starts bound executions. The result reconciler then validates and seals completed
+responses before publication.
 
 To run the bundle cross-language check after installing the sandbox runtime Python environment:
 
@@ -66,9 +68,9 @@ This ordering does not claim those later acceptance requirements are complete.
 The admin prerequisites are in
 [PILOT_GITHUB_BOOTSTRAP_HANDOFF.md](PILOT_GITHUB_BOOTSTRAP_HANDOFF.md).
 
-1. Wire managed session creation and controller execution to source acquisition, policy, Vercel
-   create/restore. Terminal retrieval, coverage validation, sealing and publication are wired into
-   the controller scheduler, but it does not yet launch complete reviews.
+1. Prove the wired creation/launch/result/publication path in the deployed pilot. Local tests use
+   real SQLite and tar with simulated external APIs; they are not real GitHub or model execution.
+   Managed restore/continuation still needs lifecycle wiring.
 2. Use the existing model API key for the synthetic pilot, as approved by the current DevOps
    application-readiness handoff. The confined source tools cannot access it. No provider broker is
    required for this milestone. GitHub App, SCM and ordinary OAuth credentials remain unavailable to
