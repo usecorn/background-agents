@@ -112,3 +112,27 @@ and its SHA-256 text digest; the controller must still validate JSON, coverage a
 revisions. Seal supplies the observed digest, not a verdict. Failed terminal execution can be sealed
 with a null digest for later investigation, but cannot become passing evidence. Active/missing
 execution stays locked.
+
+## Deployment preparation receipt
+
+The application images were built from application source `de63f916` with packaging published at
+`ae4a5659`. Both passed the network-disabled container smoke (health, anonymous rejection,
+non-root/read-only execution, restart persistence and clean exit). They were transferred over IAP
+and loaded on `openinspect-staging`; archive checksum and image IDs matched. Registry upload was
+denied for ordinary Thomas, so the first pilot can pin these loaded image IDs:
+
+- Control plane: `sha256:a89c51c22f7d7dd756136ff17fe922e3c96b4612e4e18a1f77069d77f523146c`
+- Controller: `sha256:54ad58acb792dd711e570cce84bc9cbac4bad3247a04981a26d2e432cd9a9759`
+
+Trusted Vercel snapshot: `snap_H4azvuLQ9XXg0OKzaBNBD7ESWEk4`, in the existing `openinspect-pilot`
+project. Build input hash: `2bf5409df9187be77176c0aec66b561b3248c4c2014f406a1bd52154de1c566e`. The
+builder restored a fresh sandbox and passed the image verification suite, then stopped both
+verification and build sandboxes. This does not yet prove a managed real-model conversation or
+managed conversation restoration. A local global uv cutoff conflicted with the pinned lockfile;
+`UV_NO_CONFIG=true` allowed the existing locked export without changing dependencies.
+
+The admin receipt at DevOps `a0bdf01` confirms App-key delivery. DevOps `1ff0b24` adds the private
+synthetic-media bucket configuration and `docs/runbooks/openinspect-runtime-bootstrap-handoff.md`;
+its six mocked Terraform tests and validation passed, but that new bucket has not been live-applied
+by this agent. Services have not been started on the VM. Runtime secrets, sign-in configuration, TLS
+callback access, fixture Actions enablement and actual PR/check/session proof remain outstanding.
