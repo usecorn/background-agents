@@ -48,8 +48,9 @@ Without that variable the cross-language case is explicitly skipped.
 
 ## Outstanding before application acceptance
 
-1. Wire managed session creation, authenticated terminal-event extraction and sealing, controller
-   execution, GitHub source acquisition, and Vercel create/restore to the trusted bundle protocol.
+1. Wire managed session creation and controller execution to source acquisition, policy,
+   Vercel create/restore, terminal retrieval and sealing. The source/policy and terminal API
+   building blocks exist, but the scheduler does not yet execute complete reviews.
 2. Resolve provider credential custody: current OpenCode profile receives a provider key while its
    confined source tools cannot access it. The DevOps handoff's stricter controller-only provider
    custody requires a provider broker before acceptance under that boundary.
@@ -65,3 +66,17 @@ Without that variable the cross-language case is explicitly skipped.
 OpenCode's loopback API must remain trusted-only. A probe against 1.18.29 found that a caller-selected
 repository directory can load a hostile plugin despite config flags; the managed launch uses trusted
 cwd and bridge requests without caller-selected directory headers. Do not add an unrestricted proxy.
+
+## Managed terminal API
+
+The `review-controller` service principal alone can call:
+
+- `GET /managed-reviews/:sessionId/result?runId=...&messageId=...`
+- `POST /managed-reviews/:sessionId/seal` with JSON `{runId, messageId, responseDigest}`.
+
+Use the existing sig1 service signature with the controller's separate shared secret.
+The result is pending, incomplete, or completed. A completed candidate includes the
+attributed assistant response and its SHA-256 text digest; the controller must still
+validate JSON, coverage and current revisions. Seal supplies the observed digest,
+not a verdict. Failed terminal execution can be sealed with a null digest for later
+investigation, but cannot become passing evidence. Active/missing execution stays locked.

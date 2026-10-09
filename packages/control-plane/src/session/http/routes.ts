@@ -22,6 +22,8 @@ export interface SessionInternalRoute {
 /** Handlers required to serve every internal SessionDO HTTP route. */
 export interface SessionInternalRouteHandlers {
   init: SessionInternalRouteHandler;
+  managedReviewResult: SessionInternalRouteHandler;
+  managedReviewSeal: SessionInternalRouteHandler;
   state: SessionInternalRouteHandler;
   snapshot: SessionInternalRouteHandler;
   sandboxAccess: SessionInternalRouteHandler;
@@ -73,6 +75,16 @@ export function createSessionInternalRoutes(
 ): SessionInternalRoute[] {
   return [
     { method: "POST", path: SessionInternalPaths.init, handler: handlers.init },
+    {
+      method: "GET",
+      path: SessionInternalPaths.managedReviewResult,
+      handler: handlers.managedReviewResult,
+    },
+    {
+      method: "POST",
+      path: SessionInternalPaths.managedReviewSeal,
+      handler: handlers.managedReviewSeal,
+    },
     { method: "GET", path: SessionInternalPaths.state, handler: handlers.state },
     { method: "GET", path: SessionInternalPaths.snapshot, handler: handlers.snapshot },
     {

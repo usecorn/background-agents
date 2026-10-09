@@ -52,3 +52,68 @@ it("initializes one trusted review prompt and lock together, with immutable retr
   });
   expect(conflict.status).toBe(409);
 });
+
+it("only the signed review controller can retrieve and seal a bound terminal result", async () => {
+  const { SELF } = await import("cloudflare:test");
+  const { buildServiceAuthHeaders } = await import("@open-inspect/shared/service-auth");
+  const sessionName = "managed-review-terminal";
+  const { stub } = await initNamedSessionDO(sessionName, {
+    managedReview: { runId: "run-1", messageId: "message-1", content: "Review fixture" },
+    model: "anthropic/claude-haiku-4-5",
+    harness: "opencode",
+  });
+  await queryDO(stub, "UPDATE messages SET status='completed' WHERE id=?", "message-1");
+  await queryDO(
+    stub,
+    "INSERT INTO events(id,type,data,message_id,created_at,timeline_sequence) VALUES(?,?,?,?,?,?)",
+    "terminal",
+    "execution_complete",
+    JSON.stringify({
+      type: "execution_complete",
+      messageId: "message-1",
+      sandboxId: "sandbox",
+      timestamp: 123,
+      success: true,
+      finalResponse: { assistantMessageId: "assistant", parentMessageId: "prompt", text: "{}" },
+    }),
+    "message-1",
+    123,
+    1
+  );
+  const resultUrl = `https://test.local/managed-reviews/${sessionName}/result?runId=run-1&messageId=message-1`;
+  expect((await SELF.fetch(resultUrl)).status).toBe(401);
+  for (const service of ["github-bot", "slack-bot", "linear-bot"] as const) {
+    const headers = await buildServiceAuthHeaders({
+      service,
+      secret: `test-service-secret-${service}`,
+      method: "GET",
+      url: resultUrl,
+    });
+    expect((await SELF.fetch(resultUrl, { headers })).status).toBe(403);
+  }
+  const headers = await buildServiceAuthHeaders({
+    service: "review-controller",
+    secret: "test-service-secret-review-controller",
+    method: "GET",
+    url: resultUrl,
+  });
+  const response = await SELF.fetch(resultUrl, { headers });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toContain("no-store");
+  const result = (await response.json()) as { responseDigest: string };
+  const url = `https://test.local/managed-reviews/${sessionName}/seal`;
+  const body = JSON.stringify({
+    runId: "run-1",
+    messageId: "message-1",
+    responseDigest: result.responseDigest,
+  });
+  const sealHeaders = await buildServiceAuthHeaders({
+    service: "review-controller",
+    secret: "test-service-secret-review-controller",
+    method: "POST",
+    url,
+    body,
+  });
+  expect((await SELF.fetch(url, { method: "POST", headers: sealHeaders, body })).status).toBe(200);
+  expect(await queryDO(stub, "SELECT sealed FROM managed_review")).toEqual([{ sealed: 1 }]);
+});

@@ -122,6 +122,7 @@ import { SessionTerminalMessageProjection } from "./terminal-message-projection"
 import { PersistedTerminalMessageProjectionStore } from "./terminal-message-projection-store";
 import { SessionEventStream } from "./event-stream";
 import { AutofixHandler } from "./http/handlers/autofix.handler";
+import { ManagedReviewHandler } from "./http/handlers/managed-review.handler";
 import { MessagesHandler } from "./http/handlers/messages.handler";
 import { ChildSessionsHandler } from "./http/handlers/child-sessions.handler";
 import { ChildSummaryHandler } from "./http/handlers/child-summary.handler";
@@ -920,7 +921,10 @@ export function createSessionRuntime(platform: SessionPlatform, env: Env): Sessi
   });
 
   // Internal HTTP route table (transport wiring only).
+  const managedReviewHandler = new ManagedReviewHandler(sql, new ManagedReviewStore(sql));
   const routes = createSessionInternalRoutes({
+    managedReviewResult: (_request, url) => managedReviewHandler.result(url),
+    managedReviewSeal: (request) => managedReviewHandler.seal(request),
     init: (request, _url, requestLog) => sessionInitHandler.init(request, requestLog),
     state: () => sessionLifecycleHandler.getState(),
     snapshot: () => snapshotReader.handleSnapshot(),

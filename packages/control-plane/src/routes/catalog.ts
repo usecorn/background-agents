@@ -12,6 +12,7 @@ import { auditEventRoutes } from "./audit-events";
 import { autofixRoutes } from "./autofix";
 import { automationRoutes } from "./automations";
 import { browserAuthRoutes } from "./browser-auth";
+import { managedReviewRoutes } from "./managed-reviews";
 import { channelBindingRoutes } from "./channel-bindings";
 import { commitSigningRoutes } from "./commit-signing";
 import { environmentSecretsRoutes } from "./environment-secrets";
@@ -50,6 +51,7 @@ export const catalog: readonly RouteModule[] = [
   teamRoutes,
   teamSettingsRoutes,
   channelBindingRoutes,
+  managedReviewRoutes,
 
   // Session management, then the agent-initiated Slack notification
   sessionRoutes,
