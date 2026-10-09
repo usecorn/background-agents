@@ -1021,3 +1021,74 @@ describe("VercelSandboxProvider", () => {
     );
   });
 });
+
+describe("managed review launch", () => {
+  it("uses only explicit review inputs and starts the managed runtime without ports", async () => {
+    const client = createMockClient();
+    const write = vi.fn(async () => {});
+    client.writeFileArchive = write;
+    const provider = new VercelSandboxProvider(client, providerConfig);
+    const result = await provider.createManagedReviewSandbox({
+      sessionId: "session-123",
+      sandboxId: "review-1",
+      controlPlaneUrl: "https://control-plane.test",
+      sandboxAuthToken: "bridge-token",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      providerApiKey: "synthetic-key",
+      trustedBundle: new Uint8Array([1, 2]),
+      timeoutSeconds: 1800,
+    });
+    expect(result.providerObjectId).toBe("vercel-session-1");
+    const request = vi.mocked(client.createSandbox).mock.calls[0][0];
+    expect(request.ports).toEqual([]);
+    expect(request.env?.ANTHROPIC_API_KEY).toBe("synthetic-key");
+    expect(request.env?.GITHUB_TOKEN).toBeUndefined();
+    expect(write).toHaveBeenCalledOnce();
+    expect(vi.mocked(client.startCommand).mock.calls[0][0].args).toContain(
+      "--managed-review-context"
+    );
+  });
+
+  it("stops allocated compute when bundle delivery fails and never starts runtime", async () => {
+    const client = createMockClient();
+    client.writeFileArchive = vi.fn(async () => {
+      throw new Error("upload failed");
+    });
+    const provider = new VercelSandboxProvider(client, providerConfig);
+    await expect(
+      provider.createManagedReviewSandbox({
+        sessionId: "session-123",
+        sandboxId: "review-1",
+        controlPlaneUrl: "https://control-plane.test",
+        sandboxAuthToken: "bridge-token",
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        providerApiKey: "synthetic-key",
+        trustedBundle: new Uint8Array([1, 2]),
+        timeoutSeconds: 1800,
+      })
+    ).rejects.toThrow();
+    expect(client.stopSession).toHaveBeenCalledOnce();
+    expect(client.startCommand).not.toHaveBeenCalled();
+  });
+});
+
+it("rejects managed review lifetime beyond the configured ceiling before provisioning", async () => {
+  const client = createMockClient();
+  const provider = new VercelSandboxProvider(client, providerConfig);
+  await expect(
+    provider.createManagedReviewSandbox({
+      sessionId: "session-123",
+      sandboxId: "review-1",
+      controlPlaneUrl: "https://control-plane.test",
+      sandboxAuthToken: "bridge-token",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      providerApiKey: "synthetic-key",
+      trustedBundle: new Uint8Array([1]),
+      timeoutSeconds: 10800,
+    })
+  ).rejects.toThrow("INVALID_MANAGED_REVIEW_LAUNCH");
+  expect(client.createSandbox).not.toHaveBeenCalled();
+});

@@ -84,6 +84,23 @@ export interface VercelProviderConfig {
   teamId?: string;
 }
 
+/** Internal controller inputs. Never populate this from ordinary session/repository config. */
+export interface ManagedReviewSandboxConfig {
+  sessionId: string;
+  sandboxId: string;
+  controlPlaneUrl: string;
+  sandboxAuthToken: string;
+  provider: "anthropic" | "openai";
+  model: string;
+  providerApiKey: string;
+  /** Controller-built tar containing launch.json and checkout data; never a PR-supplied archive. */
+  trustedBundle: Uint8Array;
+  timeoutSeconds: number;
+  correlation?: CreateSandboxConfig["correlation"];
+}
+
+export const MANAGED_REVIEW_UPLOAD_ROOT = "/tmp/openinspect-managed-review";
+
 export class VercelSandboxProvider implements SandboxProvider {
   readonly name = "vercel";
   private baseSnapshotIdPromise?: Promise<string>;
@@ -198,6 +215,123 @@ export class VercelSandboxProvider implements SandboxProvider {
     } catch (error) {
       if (error instanceof SandboxProviderError) throw error;
       throw this.classifyError("Failed to create Vercel sandbox", error);
+    }
+  }
+
+  async createManagedReviewSandbox(
+    config: ManagedReviewSandboxConfig
+  ): Promise<CreateSandboxResult> {
+    if (
+      !config.sessionId ||
+      !config.sandboxId ||
+      !config.model ||
+      !config.providerApiKey ||
+      !config.sandboxAuthToken ||
+      !["anthropic", "openai"].includes(config.provider) ||
+      !Number.isInteger(config.timeoutSeconds) ||
+      config.timeoutSeconds <= 0 ||
+      config.timeoutSeconds * 1000 > this.maxSandboxTimeoutMs ||
+      config.trustedBundle.byteLength === 0 ||
+      config.trustedBundle.byteLength > 16 * 1024 * 1024
+    ) {
+      throw new Error("INVALID_MANAGED_REVIEW_LAUNCH");
+    }
+    const sourceSnapshotId = await this.resolveBaseSnapshotId(config.correlation);
+    if (!sourceSnapshotId) throw new Error("MANAGED_REVIEW_BASE_IMAGE_REQUIRED");
+    const env = {
+      ...this.buildPlatformEnvVars(),
+      SANDBOX_ID: config.sandboxId,
+      CONTROL_PLANE_URL: config.controlPlaneUrl,
+      SANDBOX_AUTH_TOKEN: config.sandboxAuthToken,
+      SANDBOX_TIMEOUT_SECONDS: String(config.timeoutSeconds),
+      SESSION_CONFIG: JSON.stringify({
+        session_id: config.sessionId,
+        harness: "opencode",
+        provider: config.provider,
+        model: config.model,
+      }),
+      [config.provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"]:
+        config.providerApiKey,
+    };
+    const created = await this.client.createSandbox(
+      {
+        name: config.sandboxId,
+        runtime: this.providerConfig.runtime || DEFAULT_VERCEL_RUNTIME,
+        timeoutMs: config.timeoutSeconds * 1000,
+        resources: { vcpus: 1 },
+        ports: [],
+        env,
+        sourceSnapshotId,
+        tags: { openinspect_kind: "managed-review", openinspect_session_id: config.sessionId },
+      },
+      config.correlation
+    );
+    const sessionId = created.session.id;
+    try {
+      const prepared = await this.client.runCommandAndWait(
+        {
+          sessionId,
+          command: VERCEL_PYTHON_BIN,
+          args: ["-c", "import os; os.mkdir('/tmp/openinspect-managed-review', 0o700)"],
+          timeoutMs: 30_000,
+        },
+        config.correlation
+      );
+      if (prepared.exitCode !== 0) throw new Error("MANAGED_REVIEW_UPLOAD_PREPARATION_FAILED");
+      await this.client.writeFileArchive(
+        { sessionId, archive: config.trustedBundle, extractDir: MANAGED_REVIEW_UPLOAD_ROOT },
+        config.correlation
+      );
+      const secured = await this.client.runCommandAndWait(
+        {
+          sessionId,
+          command: "sudo",
+          args: [
+            VERCEL_PYTHON_BIN,
+            "-c",
+            "import os; os.chown('/tmp/openinspect-managed-review', 0, 0); os.chmod('/tmp/openinspect-managed-review', 0o700); os.chown('/tmp/openinspect-managed-review/launch.json', 0, 0); os.chmod('/tmp/openinspect-managed-review/launch.json', 0o600)",
+          ],
+          timeoutMs: 30_000,
+        },
+        config.correlation
+      );
+      if (secured.exitCode !== 0) throw new Error("MANAGED_REVIEW_CONTEXT_PREPARATION_FAILED");
+      const launched = await this.client.startCommand(
+        {
+          sessionId,
+          command: "sudo",
+          args: [
+            "-E",
+            VERCEL_PYTHON_BIN,
+            "-m",
+            "sandbox_runtime.entrypoint",
+            "--managed-review-context",
+            `${MANAGED_REVIEW_UPLOAD_ROOT}/launch.json`,
+          ],
+          cwd: "/",
+          env,
+        },
+        config.correlation
+      );
+      if (launched.exitCode !== null) throw new Error("MANAGED_REVIEW_EARLY_EXIT");
+      return {
+        sandboxId: config.sandboxId,
+        providerObjectId: sessionId,
+        createdAt: created.session.createdAt,
+        lifetime: {
+          kind: "finite",
+          expiresAtMs: created.session.createdAt + created.session.timeout,
+          observedAtMs: Date.now(),
+          source: "provider",
+        },
+      };
+    } catch (error) {
+      try {
+        await this.client.stopSession(sessionId, config.correlation);
+      } catch {
+        throw new Error("MANAGED_REVIEW_CLEANUP_FAILED");
+      }
+      throw this.classifyError("Managed review launch failed", error);
     }
   }
 
