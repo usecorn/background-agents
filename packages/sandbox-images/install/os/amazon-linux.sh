@@ -4,7 +4,7 @@ source "$OI_INSTALL_DIR/common.sh"
 source /etc/os-release
 [[ "$ID" == amzn && "$VERSION_ID" == 2023 ]] || { echo 'Expected Amazon Linux 2023' >&2; exit 1; }
 dnf install -y dnf-plugins-core git gcc gcc-c++ make ca-certificates openssh-clients jq unzip tar gzip \
-  util-linux shadow-utils procps-ng xorg-x11-server-Xvfb autoconf automake libtool cmake xz diffutils \
+  util-linux bubblewrap shadow-utils procps-ng xorg-x11-server-Xvfb autoconf automake libtool cmake xz diffutils \
   pkgconf-pkg-config openssl-devel libjpeg-turbo-devel zlib-devel libX11-devel libXext-devel libXft-devel \
   libXinerama-devel libXpm-devel libXrandr-devel libXtst-devel libXfixes-devel libXdamage-devel \
   libX11 libXcomposite libXdamage libXext libXfixes libXrandr libxcb libxkbcommon libdrm mesa-libgbm \
