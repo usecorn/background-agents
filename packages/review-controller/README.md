@@ -13,6 +13,11 @@ Implemented building blocks:
   current main SHA. It rejects fork, closed, transferred, stale or mismatched PRs and derives the
   run binding from server-owned policy. The HTTP client must supply this metadata; publication must
   re-read freshness.
+- `github-app-token.ts` signs App JWTs and obtains short-lived installation tokens limited to the
+  configured repository and contents/PR read plus checks write.
+- `github-client.ts` reads PR/current-main metadata and creates or updates the required check. Only
+  completed CLEAN maps to success; incomplete results fail. It does not retry ambiguous writes.
+  Reconciliation and freshness are caller duties.
 - `review-result.ts` validates the final JSON response against a controller-owned file manifest and
   six-class coverage. Prose, missing scope, contradictory findings and unsupported files cannot
   produce a passing verdict.
