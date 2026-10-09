@@ -6,6 +6,7 @@ import { GitHubReviewClient } from "./github-client";
 import { createGitHubOidcVerifier } from "./github-oidc";
 import { createReviewHttpHandler } from "./http-handler";
 import { PublicationReconciler } from "./publication-reconciler";
+import { REVIEW_POLICY_DIGEST, REVIEW_MODEL_DIGEST } from "./review-policy";
 import { ReviewRunStore } from "./run-store";
 import { startReviewServer } from "./server";
 
@@ -20,8 +21,8 @@ async function main() {
       REVIEW_OWNER_ID: numericId,
       REVIEW_OIDC_AUDIENCE: z.url(),
       REVIEW_WORKFLOW_PATH: z.string().regex(/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/),
-      REVIEW_POLICY_DIGEST: digest,
-      REVIEW_MODEL_DIGEST: digest,
+      REVIEW_POLICY_DIGEST: digest.optional(),
+      REVIEW_MODEL_DIGEST: digest.optional(),
       REVIEW_APP_ID: numericId,
       REVIEW_INSTALLATION_ID: numericId,
       REVIEW_APP_KEY_FILE: path,
@@ -31,6 +32,12 @@ async function main() {
       REVIEW_TIMEOUT_MS: z.coerce.number().int().min(1000).max(10800000).default(10800000),
     })
     .parse(process.env);
+  if (
+    (env.REVIEW_POLICY_DIGEST && env.REVIEW_POLICY_DIGEST !== REVIEW_POLICY_DIGEST) ||
+    (env.REVIEW_MODEL_DIGEST && env.REVIEW_MODEL_DIGEST !== REVIEW_MODEL_DIGEST)
+  ) {
+    throw new Error("REVIEW_CONFIGURATION_MISMATCH");
+  }
   const keyStat = statSync(env.REVIEW_APP_KEY_FILE);
   if (!keyStat.isFile() || (keyStat.mode & 0o077) !== 0) throw new Error("Private key permissions");
   const policy = {
@@ -39,8 +46,8 @@ async function main() {
     repositoryOwnerId: env.REVIEW_OWNER_ID,
     audience: env.REVIEW_OIDC_AUDIENCE,
     workflowPath: env.REVIEW_WORKFLOW_PATH,
-    policyDigest: env.REVIEW_POLICY_DIGEST,
-    modelDigest: env.REVIEW_MODEL_DIGEST,
+    policyDigest: REVIEW_POLICY_DIGEST,
+    modelDigest: REVIEW_MODEL_DIGEST,
   };
   const token = createInstallationTokenProvider({
     appId: env.REVIEW_APP_ID,

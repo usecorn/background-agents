@@ -35,8 +35,8 @@ Implemented building blocks:
   attempt. Late/superseded completions cannot overwrite a current verdict. Publication retries
   survive process restart.
 
-These modules do not yet expose an HTTP service. The reconciler, GitHub App client, OpenInspect
-managed-review admission, operator overrides, and E2E driver still need integration. Never treat the
+The HTTP service and check reconciler are wired. OpenInspect managed-review admission,
+source/policy execution, operator overrides, and the E2E driver still need integration. Never treat the
 validator alone as a trusted GitHub gate.
 
 ## Result provenance
@@ -72,7 +72,7 @@ Use Node 24. Run `npm run build -w @open-inspect/review-controller`, then
 | `REVIEW_REPOSITORY_ID`, `REVIEW_OWNER_ID`     | GitHub numeric IDs                                                  |
 | `REVIEW_OIDC_AUDIENCE`                        | Controller audience URL, also used by Actions                       |
 | `REVIEW_WORKFLOW_PATH`                        | Allowed `.github/workflows/*.yml` path                              |
-| `REVIEW_POLICY_DIGEST`, `REVIEW_MODEL_DIGEST` | Server-owned SHA-256 configuration digests                          |
+| `REVIEW_POLICY_DIGEST`, `REVIEW_MODEL_DIGEST` | Optional expected digests; must match the compiled policy/model                          |
 | `REVIEW_APP_ID`, `REVIEW_INSTALLATION_ID`     | Dedicated pilot App and installation IDs                            |
 | `REVIEW_APP_KEY_FILE`                         | Absolute PKCS#8 PEM path; file must have no group/other permissions |
 | `REVIEW_DATABASE_PATH`                        | Absolute SQLite path in a private directory                         |
@@ -85,3 +85,16 @@ publish its plaintext port. `/healthz` indicates process liveness, not provider 
 readiness. The scheduler runs every five seconds, shares an active tick and drains it on shutdown.
 Logs contain static operational codes, not credentials or provider responses. The App key belongs
 only in this container's secret mount.
+
+## Trusted policy and source
+
+The versioned policy is `review-policies/malicious-code/v1/policy.json`. The controller
+derives its policy digest from the rubric, instructions and result schema, and its model
+digest from the pinned catalog/harness/profile configuration. Optional digest environment
+variables are deployment assertions, not a way to change the policy. See the policy README
+for provenance, coverage limits and the initial model.
+
+`GitHubReviewClient.readSourceComparison` binds source to full base/head trees and verifies
+Git blob hashes. `buildReviewSourceBundle` creates a private regular-file archive from that
+source without checking out a repository or executing its code; GNU tar is required.
+These source/policy pieces are not yet connected to the execution scheduler.
