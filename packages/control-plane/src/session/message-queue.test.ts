@@ -184,6 +184,7 @@ function buildQueue(
     updateMessageToPending: vi.fn(),
     getParticipantById: vi.fn(() => createParticipant()),
     getSession: vi.fn(() => createSession()),
+    isManagedReviewLocked: vi.fn(() => false),
     updateParticipantCoalesce: vi.fn(),
     updateParticipantIdentity: vi.fn(),
     recordMessageCompletion: vi.fn((event: { messageId: string }, completedAt: number) => ({
@@ -333,6 +334,26 @@ function buildQueue(
 }
 
 describe("SessionMessageQueue", () => {
+  it("blocks ordinary API and websocket prompts while a managed review is locked", async () => {
+    const h = buildQueue(() => false);
+    h.repository.isManagedReviewLocked.mockReturnValue(true);
+    await expect(
+      h.queue.enqueuePromptFromApi({
+        content: "Override verdict",
+        authorId: "user-1",
+        source: "web",
+      })
+    ).rejects.toMatchObject({ name: "ManagedReviewLockedError" });
+    const ws = {} as WebSocket;
+    await h.queue.handlePromptMessage(ws, createClientInfo(), { content: "Override verdict" });
+    expect(h.wsManager.send).toHaveBeenCalledWith(
+      ws,
+      expect.objectContaining({ code: "MANAGED_REVIEW_LOCKED" })
+    );
+    expect(h.repository.createMessageWithAttachments).not.toHaveBeenCalled();
+    expect(h.participantService.create).not.toHaveBeenCalled();
+  });
+
   it("rejects new websocket and API prompts during a failed safety hold", async () => {
     const h = buildQueue(
       () => false,
@@ -361,6 +382,22 @@ describe("SessionMessageQueue", () => {
     expect(h.participantService.create).not.toHaveBeenCalled();
     expect(h.repository.createMessageWithAttachments).not.toHaveBeenCalled();
     expect(h.sessionStatus.transition).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the managed lock after asynchronous prompt fingerprinting", async () => {
+    const h = buildQueue(() => false);
+    const ws = {} as WebSocket;
+    const handling = h.queue.handlePromptMessage(ws, createClientInfo(), {
+      content: "Continue",
+      clientRequestId: "request-1",
+    });
+    h.repository.isManagedReviewLocked.mockReturnValue(true);
+    await handling;
+    expect(h.repository.createMessageWithAttachments).not.toHaveBeenCalled();
+    expect(h.wsManager.send).toHaveBeenCalledWith(
+      ws,
+      expect.objectContaining({ code: "MANAGED_REVIEW_LOCKED" })
+    );
   });
 
   it("rechecks the safety hold after asynchronous prompt fingerprinting", async () => {
@@ -481,6 +518,11 @@ describe("SessionMessageQueue", () => {
       kind: "enqueued",
       messageId: "msg-autofix",
     });
+    h.repository.isManagedReviewLocked.mockReturnValue(true);
+    await expect(h.queue.enqueueAutofix(command)).rejects.toMatchObject({
+      name: "ManagedReviewLockedError",
+    });
+    expect(h.repository.admitAutofixMessage).toHaveBeenCalledTimes(1);
     expect(h.participantService.getByUserId).toHaveBeenCalledWith("github:7");
     expect(h.repository.updateParticipantCoalesce).toHaveBeenCalledWith("part-1", {
       scmUserId: "7",

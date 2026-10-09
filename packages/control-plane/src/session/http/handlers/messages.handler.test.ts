@@ -1,3 +1,4 @@
+import { ManagedReviewLockedError } from "../../managed-review";
 import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "../../../logger";
 import { MessagesHandler } from "./messages.handler";
@@ -32,6 +33,19 @@ function createHandler() {
 }
 
 describe("MessagesHandler", () => {
+  it("returns a managed-review conflict without inserting a prompt", async () => {
+    const { handler, messageService, log } = createHandler();
+    vi.mocked(messageService.enqueuePrompt).mockRejectedValue(new ManagedReviewLockedError());
+    const response = await handler.enqueuePrompt(
+      new Request("http://internal/internal/prompt", {
+        method: "POST",
+        body: JSON.stringify({ content: "Continue", authorId: "user-1", source: "web" }),
+      }),
+      log
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "MANAGED_REVIEW_LOCKED" });
+  });
   it("returns a recoverable 409 when sandbox safety blocks prompt admission", async () => {
     const { handler, messageService, log } = createHandler();
     vi.mocked(messageService.enqueuePrompt).mockRejectedValue(

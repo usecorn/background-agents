@@ -1,3 +1,4 @@
+import { MANAGED_REVIEW_TABLE_SQL } from "./managed-review";
 /**
  * SQLite schema for Session Durable Objects.
  *
@@ -77,6 +78,7 @@ const STEP_USAGE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS step_usage (
 )`;
 
 export const SCHEMA_SQL = `
+${MANAGED_REVIEW_TABLE_SQL};
 CREATE TABLE IF NOT EXISTS sandbox_preservation (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   state TEXT NOT NULL
@@ -758,6 +760,11 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
     id: 56,
     description: "Retain rejected sandbox startup cleanup intent",
     run: "ALTER TABLE sandbox ADD COLUMN startup_rejected INTEGER NOT NULL DEFAULT 0",
+  },
+  {
+    id: 57,
+    description: "Persist immutable managed review binding and seal",
+    run: MANAGED_REVIEW_TABLE_SQL,
   },
 ];
 

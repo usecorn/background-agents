@@ -1,3 +1,4 @@
+import { ManagedReviewStore } from "./managed-review";
 import { DEFAULT_HARNESS, type HarnessId } from "@open-inspect/shared/harnesses";
 import type { SessionStatus, SpawnSource } from "@open-inspect/shared/types/sessions";
 import { buildSessionRepositories, type SessionRepositoryEntry } from "./repository-target";
@@ -61,6 +62,10 @@ export class SessionCoreRepository {
 
   transaction<T>(callback: () => T): T {
     return this.transactionSync(callback);
+  }
+
+  isManagedReviewLocked(): boolean {
+    return new ManagedReviewStore(this.sql).isLocked();
   }
 
   getSession(): SessionRow | null {

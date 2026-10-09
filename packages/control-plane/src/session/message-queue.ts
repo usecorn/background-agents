@@ -1,3 +1,4 @@
+import { ManagedReviewLockedError } from "./managed-review";
 import {
   checkHarnessCompatibility,
   getValidHarnessOrDefault,
@@ -178,6 +179,7 @@ export class SessionMessageQueue {
   async enqueueAutofix(
     command: Extract<GitHubAutofixSessionCommand, { type: "enqueue_feedback" }>
   ): Promise<EnqueueAutofixResponse> {
+    if (this.repository.isManagedReviewLocked()) throw new ManagedReviewLockedError();
     const session = this.repository.getSession();
     const recoveryHold = this.getSandboxPromptBlockReason() !== null;
     const userId = `github:${command.author.id}`;
@@ -288,6 +290,15 @@ export class SessionMessageQueue {
         this.wsManager.send(ws, {
           type: "error",
           code: "INVALID_ATTACHMENTS",
+          message: error.message,
+          clientRequestId: data.clientRequestId,
+        });
+        return;
+      }
+      if (error instanceof ManagedReviewLockedError) {
+        this.wsManager.send(ws, {
+          type: "error",
+          code: "MANAGED_REVIEW_LOCKED",
           message: error.message,
           clientRequestId: data.clientRequestId,
         });
@@ -907,6 +918,7 @@ export class SessionMessageQueue {
   }
 
   private assertPromptableSession(): void {
+    if (this.repository.isManagedReviewLocked()) throw new ManagedReviewLockedError();
     const session = this.repository.getSession();
     if (session && !isSessionPromptable(session.status)) {
       throw new SessionNotPromptableError(session.status);

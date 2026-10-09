@@ -1,3 +1,4 @@
+import { ManagedReviewLockedError } from "../../managed-review";
 import type { Logger } from "../../../logger";
 import { eventTypeSchema } from "@open-inspect/shared/types/sandbox-events";
 import { messageStatusSchema } from "@open-inspect/shared/types/sessions";
@@ -41,6 +42,12 @@ export class MessagesHandler {
     } catch (error) {
       if (error instanceof SessionAttachmentError) {
         return Response.json({ error: error.message }, { status: 400 });
+      }
+      if (error instanceof ManagedReviewLockedError) {
+        return Response.json(
+          { error: error.message, code: "MANAGED_REVIEW_LOCKED" },
+          { status: 409 }
+        );
       }
       if (error instanceof SessionNotPromptableError) {
         return Response.json({ error: error.message }, { status: 409 });
