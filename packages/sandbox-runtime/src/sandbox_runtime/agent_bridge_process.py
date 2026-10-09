@@ -24,8 +24,11 @@ class AgentBridgeProcess:
         self.harness = config.harness
         self._process: asyncio.subprocess.Process | None = None
         self._early_connect = False
+        self._require_session_resume = False
 
-    async def start(self, early_connect: bool | None = None) -> None:
+    async def start(
+        self, early_connect: bool | None = None, *, require_session_resume: bool | None = None
+    ) -> None:
         """Spawn the bridge; ``early_connect`` sticks, so a restart keeps the mode.
 
         In early mode the bridge connects to the control plane before the
@@ -34,6 +37,8 @@ class AgentBridgeProcess:
         """
         if early_connect is not None:
             self._early_connect = early_connect
+        if require_session_resume is not None:
+            self._require_session_resume = require_session_resume
         self.log.info("bridge.start", early_connect=self._early_connect)
         if not self.control_plane_url:
             self.log.info("bridge.skip", reason="no_control_plane_url")
@@ -59,6 +64,7 @@ class AgentBridgeProcess:
             "--harness",
             self.harness.value,
             *(["--early-connect"] if self._early_connect else []),
+            *(["--require-session-resume"] if self._require_session_resume else []),
             env=os.environ,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,

@@ -59,7 +59,9 @@ async def test_review_boot_skips_hooks_and_interactive_services(tmp_path):
     supervisor.harness_process.start.assert_awaited_once_with(
         (), supervisor.review_profile.state_root / "work", review_profile=supervisor.review_profile
     )
-    supervisor.agent_bridge.start.assert_awaited_once_with(early_connect=False)
+    supervisor.agent_bridge.start.assert_awaited_once_with(
+        early_connect=False, require_session_resume=False
+    )
     supervisor.repository_boot.boot.assert_not_awaited()
     supervisor.managed_skills.materialize.assert_not_awaited()
     supervisor.memory.materialize.assert_not_awaited()
@@ -98,3 +100,12 @@ async def test_review_cannot_run_without_bridge_identity(tmp_path):
     supervisor.config = replace(supervisor.config, sandbox_token="")
     assert not await supervisor.run()
     supervisor.harness_process.start.assert_not_awaited()
+
+
+async def test_snapshot_boot_requires_bridge_conversation_resume(tmp_path, monkeypatch):
+    supervisor = managed_supervisor(tmp_path)
+    monkeypatch.setenv("RESTORED_FROM_SNAPSHOT", "true")
+    assert await supervisor.run()
+    supervisor.agent_bridge.start.assert_awaited_once_with(
+        early_connect=False, require_session_resume=True
+    )

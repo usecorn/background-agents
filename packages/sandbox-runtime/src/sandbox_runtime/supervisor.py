@@ -673,7 +673,12 @@ class SandboxSupervisor:
                 await self._run_until_shutdown(
                     lambda: harness.start((), profile.state_root / "work", review_profile=profile)
                 )
-            await self._run_until_shutdown(lambda: self.agent_bridge.start(early_connect=False))
+            await self._run_until_shutdown(
+                lambda: self.agent_bridge.start(
+                    early_connect=False,
+                    require_session_resume=self.boot_mode is BootMode.SNAPSHOT_RESTORE,
+                )
+            )
             if not self.agent_bridge.started():
                 raise RuntimeError("Managed review bridge not started")
             self.log.info("supervisor.review.ready")

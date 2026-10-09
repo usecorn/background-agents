@@ -177,3 +177,41 @@ class TestHarnessContracts:
         with pytest.raises(ValueError, match="error message"):
             TurnOutcome(success=False)
         assert TurnOutcome.failed("boom", message_cost_usd=0.1).message_cost_usd == 0.1
+
+
+@pytest.mark.parametrize("failure", ["missing", "invalid", "unreadable", "provider_error"])
+async def test_required_resume_fails_startup_before_ready(tmp_path, monkeypatch, failure):
+    harness = ScriptedHarness(session_id=None)
+    harness.resume_session = AsyncMock(return_value=False)
+    harness.create_session = AsyncMock()
+    bridge = _bridge(harness)
+    bridge.require_session_resume = True
+    bridge.session_id_file = tmp_path / "agent-session-id"
+    bridge.legacy_session_id_file = tmp_path / "legacy"
+    if failure != "missing":
+        bridge.session_id_file.write_text("saved")
+    if failure == "unreadable":
+        bridge._read_persisted_session_id = MagicMock(side_effect=OSError("private-path"))
+    elif failure == "provider_error":
+        harness.resume_session.side_effect = RuntimeError("private-provider-error")
+    fatal = tmp_path / "fatal"
+    monkeypatch.setattr("sandbox_runtime.bridge.BRIDGE_FATAL_ERROR_FILE_PATH", str(fatal))
+    bridge._connect_and_run = AsyncMock(side_effect=bridge.shutdown_event.set)
+    with pytest.raises(HarnessStartError, match="MANAGED_REVIEW_SESSION_UNAVAILABLE"):
+        await bridge.run()
+    harness.create_session.assert_not_awaited()
+    bridge._connect_and_run.assert_not_awaited()
+    assert fatal.read_text() == "MANAGED_REVIEW_SESSION_UNAVAILABLE"
+    assert harness.closed
+
+
+async def test_required_resume_preserves_valid_conversation(tmp_path):
+    harness = ScriptedHarness(session_id=None)
+    bridge = _bridge(harness)
+    bridge.require_session_resume = True
+    bridge.session_id_file = tmp_path / "agent-session-id"
+    bridge.legacy_session_id_file = tmp_path / "legacy"
+    bridge.session_id_file.write_text("saved")
+    await bridge._load_session_id()
+    assert harness.session_id == "saved"
+    assert bridge.session_id_file.read_text() == "saved"

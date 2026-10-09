@@ -147,6 +147,7 @@ class AgentBridge:
         harness: AgentHarness | None = None,
         *,
         early_connect: bool = False,
+        require_session_resume: bool = False,
         harness_factory: Callable[[], AgentHarness] | None = None,
     ):
         self.sandbox_id = sandbox_id
@@ -154,6 +155,7 @@ class AgentBridge:
         self.control_plane_url = control_plane_url
         self.auth_token = auth_token
         self.opencode_port = opencode_port
+        self.require_session_resume = require_session_resume
 
         # Logger
         self.log = get_logger(
@@ -1076,6 +1078,18 @@ class AgentBridge:
         startup never replaces a conversation as a side effect of loading it.
         """
         harness = harness if harness is not None else self._require_harness()
+        if self.require_session_resume:
+            try:
+                persisted = self._read_persisted_session_id()
+                if not persisted or not await harness.resume_session(persisted):
+                    raise ValueError
+                if harness.session_id != persisted:
+                    raise ValueError
+                await self._save_session_id(harness, strict=True)
+            except Exception:
+                self._record_fatal_error("MANAGED_REVIEW_SESSION_UNAVAILABLE")
+                raise HarnessStartError("MANAGED_REVIEW_SESSION_UNAVAILABLE") from None
+            return
         try:
             persisted = self._read_persisted_session_id()
         except Exception as e:
@@ -1134,6 +1148,7 @@ async def main() -> None:
     parser.add_argument("--control-plane", required=True, help="Control plane URL")
     parser.add_argument("--token", required=True, help="Auth token")
     parser.add_argument("--opencode-port", type=int, default=4096, help="OpenCode port")
+    parser.add_argument("--require-session-resume", action="store_true")
     parser.add_argument(
         "--harness",
         default=DEFAULT_HARNESS_ID.value,
@@ -1155,6 +1170,7 @@ async def main() -> None:
         opencode_port=args.opencode_port,
         harness_id=parse_harness_id(args.harness),
         early_connect=args.early_connect,
+        require_session_resume=args.require_session_resume,
     )
 
     try:
