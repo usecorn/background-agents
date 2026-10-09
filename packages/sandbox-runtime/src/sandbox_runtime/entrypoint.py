@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from .repo_config import RepoEntry
+    from .review_profile import ReviewProfile
 
 configure_logging()
 
@@ -117,7 +118,9 @@ def _build_memory(
     )
 
 
-def build_supervisor(shutdown_event: asyncio.Event) -> SandboxSupervisor:
+def build_supervisor(
+    shutdown_event: asyncio.Event, *, review_profile: ReviewProfile | None = None
+) -> SandboxSupervisor:
     """Consume process secrets and compose the production runtime."""
     apply_image_environment()
     config = RuntimeConfig.from_env(os.environ)
@@ -173,6 +176,7 @@ def build_supervisor(shutdown_event: asyncio.Event) -> SandboxSupervisor:
         memory=_build_memory(config, claude_config_dir, log),
         boot_events=warnings,
         docker_service=DockerService(log) if config.docker_enabled else None,
+        review_profile=review_profile,
     )
 
 

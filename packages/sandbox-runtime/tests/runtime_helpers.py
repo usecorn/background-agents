@@ -13,6 +13,7 @@ from sandbox_runtime.opencode_server import OpenCodeServer
 from sandbox_runtime.repository_boot import RepositoryBoot, RepositoryBootResult
 from sandbox_runtime.repository_hooks import RepositoryHooks
 from sandbox_runtime.repository_sync import RepositorySynchronizer
+from sandbox_runtime.review_profile import ReviewProfile
 from sandbox_runtime.runtime_config import RuntimeConfig
 from sandbox_runtime.supervisor import SandboxSupervisor
 from sandbox_runtime.tunnel_environment import TunnelEnvironment
@@ -69,6 +70,7 @@ def make_supervisor(
     environment: Mapping[str, str] | None = None,
     *,
     workspace_path: Path = Path("/workspace"),
+    review_profile: ReviewProfile | None = None,
 ) -> SandboxSupervisor:
     config = make_runtime_config(environment, workspace_path=workspace_path)
     shutdown_event = asyncio.Event()
@@ -99,6 +101,7 @@ def make_supervisor(
         shutdown_event,
         log,
         boot_events=warnings,
+        review_profile=review_profile,
     )
     supervisor._repository_boot_result = RepositoryBootResult(
         git_sync_success=True,

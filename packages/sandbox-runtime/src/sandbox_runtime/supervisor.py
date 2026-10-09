@@ -17,7 +17,8 @@ from .constants import (
     IMAGE_BUILD_EXECUTION_TIMEOUT_ENV_VAR,
 )
 from .docker_control import DockerControl
-from .harness.base import DETERMINISTIC_FAILURE_EXIT_CODE
+from .harness.base import DETERMINISTIC_FAILURE_EXIT_CODE, HarnessId
+from .opencode_server import OpenCodeServer
 from .repo_image_callback import RepoImageBuildCallback
 from .runtime_config import BootMode, RuntimeConfig
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from .managed_skills import ManagedSkillsMaterializer
     from .memories import MemoryMaterializer
     from .repository_boot import RepositoryBoot, RepositoryBootResult
+    from .review_profile import ReviewProfile
     from .web_terminal import WebTerminal
 
 _ResultT = TypeVar("_ResultT")
@@ -76,8 +78,10 @@ class SandboxSupervisor:
         memory: MemoryMaterializer | None = None,
         boot_events: BootEventLog | None = None,
         docker_service: DockerService | None = None,
+        review_profile: ReviewProfile | None = None,
     ) -> None:
         self.config = config
+        self.review_profile = review_profile
         self.repository_boot = repository_boot
         # Present only for Docker-enabled sandboxes: started before repository
         # hooks, watched for the whole session, stopped last.
@@ -648,10 +652,62 @@ class SandboxSupervisor:
         with self.boot_events.phase_scope("harness"):
             await self.harness_process.start(boot_result.repositories, boot_result.workdir)
 
+    async def _run_managed_review(self) -> bool:
+        """Start only the trusted harness and bridge; never run checkout code."""
+        profile = self.review_profile
+        harness = self.harness_process
+        try:
+            if (
+                profile is None
+                or self.boot_mode not in (BootMode.FRESH, BootMode.SNAPSHOT_RESTORE)
+                or self.config.docker_enabled
+                or self.config.harness is not HarnessId.OPENCODE
+                or not isinstance(harness, OpenCodeServer)
+                or not self.config.control_plane_url
+                or not self.config.session_id
+                or not self.config.sandbox_token
+            ):
+                raise ValueError("Invalid managed review boot configuration")
+            self.boot_events.reset()
+            with self.boot_events.phase_scope("harness"):
+                await self._run_until_shutdown(
+                    lambda: harness.start((), profile.state_root / "work", review_profile=profile)
+                )
+            await self._run_until_shutdown(lambda: self.agent_bridge.start(early_connect=False))
+            if not self.agent_bridge.started():
+                raise RuntimeError("Managed review bridge not started")
+            self.log.info("supervisor.review.ready")
+            while not self.shutdown_event.is_set():
+                # A crash may have happened after a model call was accepted.
+                # Do not silently respawn or replay an automated review attempt.
+                if self.harness_process.exit_code() is not None:
+                    raise RuntimeError("Managed review process exited")
+                bridge_exit = self.agent_bridge.exit_code()
+                if bridge_exit == 0:
+                    self.shutdown_event.set()
+                    break
+                if bridge_exit is not None:
+                    raise RuntimeError("Managed review process exited")
+                await self._wait_for_shutdown(1.0)
+            return True
+        except BootExecutionCancelled:
+            self.log.info("supervisor.review.cancelled")
+            return True
+        except Exception:
+            # No arbitrary checkout paths, provider diagnostics or prompt text in
+            # the fatal report. The controller treats this attempt as incomplete.
+            await self._report_fatal_error("Managed review process exited")
+            return False
+        finally:
+            await self.agent_bridge.stop()
+            await self.harness_process.stop()
+
     async def run(self, repo_image_callback: RepoImageBuildCallback | None = None) -> bool:
         startup_start = time.time()
         self.boot_mode = BootMode.from_env(os.environ)
         os.environ["OPENINSPECT_BOOT_MODE"] = self.boot_mode.value
+        if self.review_profile is not None:
+            return await self._run_managed_review()
         self.log.info(
             "supervisor.start",
             repo_owner=self.config.repo_owner,
