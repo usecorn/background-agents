@@ -136,3 +136,23 @@ synthetic-media bucket configuration and `docs/runbooks/openinspect-runtime-boot
 its six mocked Terraform tests and validation passed, but that new bucket has not been live-applied
 by this agent. Services have not been started on the VM. Runtime secrets, sign-in configuration, TLS
 callback access, fixture Actions enablement and actual PR/check/session proof remain outstanding.
+
+## Private service startup receipt
+
+Both `openinspect-pilot-control-plane-1` and `openinspect-pilot-review-controller-1` are healthy on
+`openinspect-staging`. They bind only `127.0.0.1:8787` and `127.0.0.1:8788`. The control plane
+applied 84 migrations and reports active cron/alarm/job loops with no sessions. The controller
+reports liveness. Both unauthenticated admission endpoints return 401.
+
+Runtime configuration is under `/etc/openinspect-pilot` (root-private files); service/encryption
+secrets were generated on the VM without printing their values. The App key remains solely in the
+controller secret mount. The Vercel management token was staged in the control-plane environment;
+its project/team/snapshot match the verified pilot artifact. Model credentials and a verified
+canonical review owner still need configuration. The proposed callback hostname and media bucket are
+configured names, not claims that DNS/TLS or bucket provisioning is complete.
+
+An actual signed request from the controller container to the control plane passed authentication
+and returned `MANAGED_REVIEW_OWNER_UNAVAILABLE` (503), with no review created. This verifies secret
+agreement while preserving the owner requirement. Both services restarted and recovered healthy; the
+signed refusal was verified again. Environment files are root-owned 0600 and controller SQLite is
+UID1001 mode0600. No model run, public ingress or fixture CI was started by this receipt.
