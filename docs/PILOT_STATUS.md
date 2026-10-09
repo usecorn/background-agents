@@ -21,10 +21,10 @@ superseded by this handoff and DevOps.
   must be mounted only into the controller. `/healthz` reports liveness, not reviewer readiness.
 - `packages/control-plane`: Node-hostable OpenInspect service, GCS adapter, managed-session prompt
   locks, and dedicated Vercel managed-review creation/restore methods. Managed restore uses the
-  retained context without uploading replacement source or falling back to a base image.
-  These methods still need lifecycle/controller wiring. See `docs/CONTROL_PLANE_CONTAINER.md` for
-  existing packaging. Application deployment needs separate persistent control-plane/controller
-  directories using the host ownership from Terraform.
+  retained context without uploading replacement source or falling back to a base image. These
+  methods still need lifecycle/controller wiring. See `docs/CONTROL_PLANE_CONTAINER.md` for existing
+  packaging. Application deployment needs separate persistent control-plane/controller directories
+  using the host ownership from Terraform.
 - `packages/sandbox-runtime`: explicit managed launch, hash-verified source staging, constrained
   OpenCode configuration, read-only/network-isolated MCP tools, and strict conversation recovery.
 - `packages/review-controller/src/source-bundle.ts`: creates a regular-file tar from validated text
