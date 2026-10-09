@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
     from .repo_config import RepoEntry
+    from .review_profile import ReviewProfile
     from .runtime_config import OpenCodeConfig
 
 _LOG_FORWARD_STREAM_LIMIT_BYTES = 1024 * 1024
@@ -387,8 +388,33 @@ class OpenCodeServer:
                 config[name] = entry
         return config
 
-    async def start(self, repositories: Sequence[RepoEntry], workdir: Path) -> None:
-        """Start OpenCode server with configuration."""
+    async def start(
+        self,
+        repositories: Sequence[RepoEntry],
+        workdir: Path,
+        *,
+        review_profile: ReviewProfile | None = None,
+    ) -> None:
+        """Start OpenCode with ordinary config or an explicitly trusted review profile."""
+        if review_profile is not None:
+            if (self.provider, self.model) != (review_profile.provider, review_profile.model):
+                raise ValueError("Review model does not match trusted profile")
+            env = review_profile.environment()
+            self._opencode_process = await asyncio.create_subprocess_exec(
+                "opencode",
+                "serve",
+                "--port",
+                str(OPENCODE_PORT),
+                "--hostname",
+                "127.0.0.1",
+                cwd=review_profile.state_root / "work",
+                env=env,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await self._wait_for_health()
+            self.log.info("opencode.review.ready")
+            return
         self._setup_managed_oauth()
         self.log.info("opencode.start")
 
