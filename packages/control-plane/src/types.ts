@@ -34,6 +34,7 @@ export interface EnvConfig {
   IMAGE_CALLBACK_TOKEN_PEPPER?: string;
   // Per-service sig1 verification keys. Absent ⇒ that service cannot
   // authenticate.
+  SERVICE_AUTH_SECRET_REVIEW_CONTROLLER?: string;
   SERVICE_AUTH_SECRET_WEB?: string;
   SERVICE_AUTH_SECRET_SLACK_BOT?: string;
   SERVICE_AUTH_SECRET_GITHUB_BOT?: string;

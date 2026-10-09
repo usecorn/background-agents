@@ -15,6 +15,7 @@ import { cleanD1Tables } from "./cleanup";
 import { initNamedSession, seedSandboxAuth } from "./helpers";
 
 const SERVICE_SECRET: Record<ServiceName, string> = {
+  "review-controller": "test-service-secret-review-controller",
   web: "test-service-secret-web",
   "slack-bot": "test-service-secret-slack-bot",
   "github-bot": "test-service-secret-github-bot",

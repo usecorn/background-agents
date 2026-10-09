@@ -109,6 +109,9 @@ export function deriveIdentity(principal: Principal | undefined): DerivedIdentit
         spawnSource: "user",
       };
     case "service":
+      if (principal.service === "review-controller") {
+        return { participantUserId: null, canonicalUserId: null, actor: null, spawnSource: null };
+      }
       if (principal.service === "web") {
         // Web's userless service credential asserts no one; user-bearing web
         // calls carry a web session token and resolve as user principals.

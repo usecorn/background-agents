@@ -14,6 +14,7 @@ import type { Env } from "../types";
 import { TEST_BACKGROUND_TASK_CONTEXT } from "../router.test-support";
 
 const SECRETS = {
+  SERVICE_AUTH_SECRET_REVIEW_CONTROLLER: "review-secret",
   SERVICE_AUTH_SECRET_WEB: "web-secret",
   SERVICE_AUTH_SECRET_SLACK_BOT: "slack-secret",
   SERVICE_AUTH_SECRET_GITHUB_BOT: "github-secret",
@@ -21,6 +22,7 @@ const SECRETS = {
 };
 
 const SERVICE_SECRET: Record<ServiceName, string> = {
+  "review-controller": SECRETS.SERVICE_AUTH_SECRET_REVIEW_CONTROLLER,
   web: SECRETS.SERVICE_AUTH_SECRET_WEB,
   "slack-bot": SECRETS.SERVICE_AUTH_SECRET_SLACK_BOT,
   "github-bot": SECRETS.SERVICE_AUTH_SECRET_GITHUB_BOT,
@@ -434,5 +436,21 @@ describe("authenticate — no recognized credential", () => {
     const request = new Request("https://cp.test.local/sessions");
     const result = await authenticate(request, createEnv(), createCtx());
     expect(result).toEqual({ reason: "Unauthorized", status: 401, failedScheme: "none" });
+  });
+});
+
+describe("review controller service identity", () => {
+  it("authenticates with its separate key", async () => {
+    const request = await signedRequest({ service: "review-controller", body: "{}" });
+    const result = await authenticate(request, createEnv(), createCtx());
+    expect(result).toMatchObject({
+      principal: { kind: "service", service: "review-controller", actor: null },
+    });
+  });
+  it("cannot borrow the GitHub bot key or assert a human actor", async () => {
+    for (const options of [{ secret: SERVICE_SECRET["github-bot"] }, { actor: "github:123" }]) {
+      const request = await signedRequest({ service: "review-controller", body: "{}", ...options });
+      expect(isAuthError(await authenticate(request, createEnv(), createCtx()))).toBe(true);
+    }
   });
 });

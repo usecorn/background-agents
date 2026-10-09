@@ -19,6 +19,7 @@ const MP4_BYTES = Uint8Array.from([
 ]);
 
 const SERVICE_SECRETS: Record<ServiceName, string> = {
+  "review-controller": "test-service-secret-review-controller",
   web: "test-service-secret-web",
   "github-bot": "test-service-secret-github-bot",
   "slack-bot": "test-service-secret-slack-bot",

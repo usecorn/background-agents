@@ -47,6 +47,7 @@ export type Principal =
  * identity arrives by token exchange, never assertion.
  */
 export const ASSERTION_RIGHTS: Record<ServiceName, ActorNamespace | null> = {
+  "review-controller": null,
   web: null,
   "slack-bot": "slack",
   "github-bot": "github",
