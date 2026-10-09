@@ -187,9 +187,27 @@ export class ReviewRunStore {
       .map((row) => String(row.id));
   }
 
+  supersede(id: string, now: number): void {
+    this.db
+      .prepare(
+        `UPDATE review_runs SET state='superseded',revision=revision+1,
+       completedAt=COALESCE(completedAt,?),contentExpiresAt=COALESCE(contentExpiresAt,?)
+       WHERE id=? AND state!='superseded'`
+      )
+      .run(now, now + RETENTION_MS, id);
+  }
+
+  hasCheckCreationIntent(id: string): boolean {
+    return (
+      this.db.prepare("SELECT 1 FROM check_creation_intents WHERE runId=?").get(id) !== undefined
+    );
+  }
+
   pendingPublication(): ReviewRun[] {
     return this.db
-      .prepare(`SELECT * FROM review_runs WHERE revision>publishedRevision AND ${CURRENT}`)
+      .prepare(
+        `SELECT * FROM review_runs WHERE revision>publishedRevision AND (${CURRENT} OR state='superseded')`
+      )
       .all()
       .map((row) => decode(row as unknown as Row));
   }
@@ -221,7 +239,7 @@ export class ReviewRunStore {
       this.db
         .prepare(
           `UPDATE review_runs SET publishedRevision=?,checkId=?
-          WHERE id=? AND revision=? AND ${CURRENT}`
+          WHERE id=? AND revision=? AND (${CURRENT} OR state='superseded')`
         )
         .run(revision, checkId, id, revision).changes === 1
     );

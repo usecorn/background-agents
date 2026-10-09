@@ -13,7 +13,17 @@ export async function ensureReviewCheck(
   appId: string
 ): Promise<string | null> {
   const run = store.get(runId);
-  if (!run || !store.isCurrent(runId)) return null;
+  if (!run) return null;
+  const retired = run.state === "superseded" || !store.isCurrent(runId);
+  if (retired) {
+    if (run.checkId) return run.checkId;
+    if (!store.hasCheckCreationIntent(runId)) return null;
+    const recovered = await github.findCheck(run.binding.headSha, runId, appId);
+    if (recovered && !store.bindCheck(runId, recovered)) {
+      throw new Error("REVIEW_CHECK_BINDING_CONFLICT");
+    }
+    return recovered;
+  }
   if (run.checkId) return run.checkId;
   const existing = await github.findCheck(run.binding.headSha, runId, appId);
   if (!store.isCurrent(runId)) return null;

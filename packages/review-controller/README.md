@@ -24,6 +24,9 @@ Implemented building blocks:
 - `check-recovery.ts` connects durable creation intents to App-owned check lookup, including
   recovery after an accepted POST loses its response. Missing ambiguous attempts stay pending
   instead of generating duplicate checks.
+- `publication-reconciler.ts` serializes publication ticks, expires deadlines, recovers check
+  identities, re-reads PR freshness and retries check updates from the persisted outcome. Superseded
+  checks are cancelled. It never invokes a model.
 - `run-store.ts` records revision bindings, attempts, session IDs, deadlines and publication
   revisions in SQLite. Duplicate starts reuse the current run; only explicit rerun creates another
   attempt. Late/superseded completions cannot overwrite a current verdict. Publication retries
